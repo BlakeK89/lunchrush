@@ -1,18 +1,28 @@
-# V1 QA record (2026-10-20)
+# Lunch Rush V1 UI redesign — QA status
 
-- [x] 40-location synthetic CSV input generated and validated against schema.
-- [x] Original analytics engine's 14 regression tests pass.
-- [x] Added 7 app-helper / upload safety tests; all pass.
-- [x] Headless Python-flow smoke test covered all five Streamlit views with a test double (not a browser render).
-- [x] Confirmed weekly/regional/channel/daypart sales totals reconcile in tests.
-- [x] Confirmed selected-region insights do not leak other regions' findings.
-- [x] Confirmed comparable menu decline metrics rely on valid matched stores.
-- [x] Confirmed fictional chain display name is removed from app source data.
-- [x] Compiled Python application/modules without syntax error.
-- [ ] Streamlit dependency installation and runtime smoke check (unavailable here).
-- [ ] Browser inspection of desktop/mobile UI.
-- [ ] Upload interaction test in real Streamlit frontend.
-- [ ] Deploy to a dedicated Lunch Rush host and verify public URL.
-- [ ] Update Brand Rundown homepage card after successful deployment.
+Review date: October 20, 2026
 
-Do not describe these last five items as completed until independently verified.
+## Source of design
+
+- Current `BlakeK89/brand-performance-analyzer` (Shelf Life) `main` branch `app.py` and `.streamlit/config.toml`, reviewed via connected GitHub.
+- Approved Brand Rundown guidelines and supplied Lunch Rush logo/app icon.
+- This redesign keeps the existing restaurant analytics engine, fictional dataset, and input schema unchanged.
+
+## Automated checks
+
+- **25/25 Python unit and headless app-flow tests pass** (run `python -m unittest discover -s tests -v`).
+- Includes all five tab views, no-comparison mode, custom date range, year-to-date mode, POS/menu validation, matched same-store cohorts, and channel totals.
+- Default sample KPI reconciliation independently checked: net sales $24,783,583.35, 1,466,211 transactions, comparable-store sales +0.35%, comparable transactions -5.17%, drive-thru and other channels sum exactly to net sales.
+- Python source compiles cleanly.
+
+## Not yet verified
+
+- This build environment does not have Streamlit and cannot download it. No actual hosted Streamlit/browser visual test has been completed for the **revised** UI.
+- GitHub write access was rejected by the integration (HTTP 403). The local redesign must be uploaded to `BlakeK89/lunchrush` before it can replace the deployed page.
+- After upload, verify the live page on desktop/mobile, all five tabs, demo data, date controls, filter changes and workbook upload.
+
+## Known limitations
+
+- Promotions, profitability, food COGS and labor costs remain V2 scope.
+- UI visual consistency is implemented from the reference code/CSS, but exact browser rendering is still pending.
+- Placeholder demo location names are neutral. No rejected fictional chain name was introduced.

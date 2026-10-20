@@ -1,28 +1,22 @@
-# Deployment instructions
+# Lunch Rush V1 interface refresh — deployment
 
-## Preserve existing applications
+The GitHub repository is `BlakeK89/lunchrush`. Streamlit automatically rebuilds the public deployment at https://lunchrush.streamlit.app/ when its `main` branch changes.
 
-Create a **separate** repository and deployment for Lunch Rush. Do not replace the existing Shelf Life repository or deployment. The Brand Rundown homepage's Lunch Rush *Coming Soon* state should be changed only after the application URL and workflow are verified.
+## Upload this patch
 
-## Streamlit Community Cloud
+1. Extract `Lunch_Rush_Shelf_Style_Update.zip`.
+2. In GitHub, open https://github.com/BlakeK89/lunchrush and select **Add file > Upload files**.
+3. Drag the **contents** of the extracted folder into the upload area, preserving their paths. Confirm `app.py`, `lunch_rush/theme.py`, `tests/test_app_ui_smoke.py`, `QA_STATUS.md`, and `DEPLOYMENT.md` are shown as changed/new files.
+4. Commit changes to `main`.
+5. The hidden `.streamlit/config.toml` file was skipped by the first web upload. Check whether it appears in GitHub after this upload. If absent, create it from the patch by choosing **Add file > Create new file**, entering `.streamlit/config.toml` in the filename box, and pasting the supplied configuration file's text.
+6. Open https://lunchrush.streamlit.app/, wait for Streamlit to redeploy, and inspect the new Overview page.
 
-1. Upload the contents of this package to a new repository for Lunch Rush. The app entrypoint is `app.py`, at the repository root.
-2. Verify `requirements.txt`, `.streamlit/config.toml`, `schema.json`, `assets/`, `lunch_rush/` and `data/demo/` are all included.
-3. In Streamlit Community Cloud, choose **Create app → From GitHub**, then the new repository's `main` branch and entrypoint `app.py`.
-4. Deploy. Once the service installs dependencies, check startup and the Overview page.
-5. Click all five pages. Confirm region, ownership, format and individual restaurant filters change figures. Check 4/13/26/52-week ranges, prior-period comparisons and download buttons.
-6. Upload the verified 10-restaurant Excel preview from the project and confirm it loads. Then upload a ZIP containing all eight `data/demo/*.csv` files (the app must reject malformed/unknown tables).
-7. Confirm source warnings display, and the app doesn't display invented promotions, COGS or profitability metrics.
-8. Check mobile and desktop layout, logo, readability, charts and timing. Test cold-start load time using the actual host.
-9. Only after the above: update the Lunch Rush card/link on the Brand Rundown homepage to the working, verified URL.
+## Required live checks
 
-## Security/operational notes
+- Verify branded blue sidebar, primary logo at top, cream reporting band, five KPI cards, horizontal navigation, two comparison charts and channel sales tiles.
+- Confirm the five tabs open and report values.
+- Test No Comparison, Previous Period, 4/13/26/52-week modes, YTD, custom range, region/ownership/format filters, and an upload.
+- Confirm no previous rejected fictional chain name appears and no V2 financial metrics are shown as real values.
+- Verify mobile layout. If anything fails, capture the error screen and Streamlit logs before making unrelated edits.
 
-- Demo data are synthetic. Do not upload sensitive business data to a publicly hosted demo without reviewing the host's security, access controls and data retention rules.
-- Uploads are parsed on the app server. The application does not write them to persistent disk, but the hosting platform may have its own logging and operational data policies.
-- File limits and ZIP member limits are enforced by `lunch_rush/upload.py` and `lunch_rush/io.py`.
-- Re-test and deploy after any changes to the schema or validation calculations.
-
-## Current blocker
-
-This build environment could not install Streamlit, so it was not possible to launch the UI or perform real browser QA here. A fresh hosted runtime is required before this can honestly be considered *live*.
+The patch does not modify the live Shelf Life repository, restaurant engine, data, or existing logos.
