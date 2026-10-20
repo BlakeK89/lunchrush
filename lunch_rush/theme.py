@@ -28,7 +28,7 @@ div[data-testid="stAppViewContainer"] {background:var(--br-paper); color:var(--b
 h1,h2,h3 {color: var(--br-navy); letter-spacing:-.03em;}
 h2,h3 {font-weight:800 !important;}
 div[data-testid="stCaptionContainer"],div[data-testid="stCaptionContainer"] p {
-    font-size:.9rem; line-height:1.45; color:var(--br-navy); opacity:1;
+    font-size:1rem; line-height:1.5; color:var(--br-navy); opacity:1;
 }
 /* Header: same position, proportions and Brand Rundown divider as Shelf Life. */
 .st-key-br_identity_header {
@@ -44,7 +44,8 @@ div[data-testid="stCaptionContainer"],div[data-testid="stCaptionContainer"] p {
 .st-key-br_identity_header [data-testid="stImage"] img {
     display:block; box-sizing:border-box !important;
     width:min(300px,100%) !important; height:auto !important;
-    padding:12px 10px 9px 8px !important; object-fit:contain !important;
+    max-height:none !important; padding:16px 12px 12px 8px !important;
+    object-fit:contain !important;
     object-position:left center; clip-path:none !important;
 }
 .br-screen-reader-heading {
@@ -75,7 +76,24 @@ section[data-testid="stSidebar"] [data-baseweb="select"] > div {
 }
 section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] *,
 section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button {color:#fff !important;}
-section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {scrollbar-color:#fff rgba(255,255,255,.18);}
+section[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+    scrollbar-color:#fff rgba(255,255,255,.18);
+}
+section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] * {
+    color:#fff !important;stroke:#fff !important;
+}
+section[data-testid="stSidebar"] [data-testid="stExpander"] {
+    border-color:rgba(255,255,255,.35);background:rgba(8,16,67,.18);
+}
+section[data-testid="stSidebar"] [data-testid="stExpander"] summary,
+section[data-testid="stSidebar"] [data-testid="stExpander"] summary *,
+section[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpanderToggleIcon"] {
+    color:#fff !important;stroke:#fff !important;opacity:1 !important;font-weight:650;
+}
+section[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stWidgetLabel"] p {
+    color:#fff !important;
+}
 section[data-testid="stSidebar"] .st-key-br_data_source_control,
 section[data-testid="stSidebar"] .st-key-br_data_source_control [role="radiogroup"],
 section[data-testid="stSidebar"] .st-key-br_data_source_control [role="radiogroup"]>div {
@@ -87,6 +105,23 @@ section[data-testid="stSidebar"] .st-key-br_data_source_control [data-testid="st
     padding:.4rem 1.75rem .4rem .65rem;
     border:1.5px solid rgba(255,255,255,.7); border-radius:.7rem;
     background:rgba(8,16,67,.16); margin:.2rem 0; cursor:pointer;
+}
+/* Avoid default red native radio indicator if the hidden Streamlit theme is missing. */
+section[data-testid="stSidebar"] .st-key-br_data_source_control input[type="radio"] {
+    accent-color:var(--br-electric) !important;
+}
+section[data-testid="stSidebar"] .st-key-br_data_source_control [data-testid="stRadio"] label:has(input[type="radio"])::before {
+    content:"";position:absolute;left:.7rem;top:50%;transform:translateY(-50%);
+    width:12px;height:12px;box-sizing:border-box;border-radius:50%;
+    background:#fff;border:2px solid #fff;z-index:2;pointer-events:none;
+}
+section[data-testid="stSidebar"] .st-key-br_data_source_control [data-testid="stRadio"] label:has(input:checked)::before {
+    background:var(--br-electric);border-color:var(--br-electric);
+    box-shadow:inset 0 0 0 2px var(--br-cream);
+}
+section[data-testid="stSidebar"] .st-key-br_data_source_control label:has(input[type="radio"]) [data-checked="true"],
+section[data-testid="stSidebar"] .st-key-br_data_source_control label:has(input:checked) [data-testid="stRadio"] svg {
+    color:var(--br-electric) !important;fill:var(--br-electric) !important;
 }
 section[data-testid="stSidebar"] .st-key-br_data_source_control [data-testid="stRadio"] label:has(input:checked) {
     background:var(--br-cream) !important; border-color:var(--br-cream) !important;
@@ -113,6 +148,23 @@ section[data-testid="stSidebar"] .st-key-br_upload_warning [data-testid="stAlert
     border-left:5px solid var(--br-coral);border-radius:.6rem;
 }
 section[data-testid="stSidebar"] .st-key-br_upload_warning [data-testid="stAlert"] * {color:var(--br-navy) !important;}
+/* Download sample data is secondary, at the bottom of the settings sidebar. */
+section[data-testid="stSidebar"] .st-key-br_sample_download {
+    border-top:1px solid rgba(255,255,255,.42);padding-top:.8rem;margin-top:1.15rem;
+}
+section[data-testid="stSidebar"] .st-key-br_sample_download button {
+    background:transparent !important;border:1px solid rgba(255,255,255,.75) !important;
+    color:#fff !important;border-radius:.48rem !important;font-size:.78rem !important;
+    font-weight:550 !important;line-height:1.25 !important;min-height:0 !important;
+    height:auto !important;padding:.4rem .52rem !important;box-shadow:none !important;
+    max-width:100% !important;white-space:normal !important;text-align:left !important;
+}
+section[data-testid="stSidebar"] .st-key-br_sample_download button * {
+    color:#fff !important;font-size:inherit !important;font-weight:inherit !important;
+}
+section[data-testid="stSidebar"] .st-key-br_sample_download button:hover {
+    background:rgba(255,255,255,.13) !important;border-color:#fff !important;
+}
 /* Shelf Life reporting context. */
 .st-key-br_reporting_context {
     background:var(--br-cream); border:1.5px solid var(--br-border);
@@ -162,8 +214,7 @@ div[data-testid="stMetricValue"] {
 /* White chart cards on cream canvas, aligned with Shelf Life overview. */
 .st-key-br_chart_comparison,.st-key-br_chart_contribution,
 .st-key-lr_chart_restaurants_top,.st-key-lr_chart_restaurants_regions,.st-key-lr_chart_menu_categories,
-.st-key-lr_breakdown_channel,.st-key-lr_breakdown_daypart,
-.st-key-lr_drive_card,.st-key-lr_other_card {
+.st-key-lr_breakdown_channel,.st-key-lr_breakdown_daypart {
     background:#fff;border:1px solid var(--br-border);border-radius:.9rem;
     padding:.9rem 1.05rem 1rem;box-shadow:0 3px 12px rgba(8,16,67,.055);
 }
@@ -173,12 +224,30 @@ div[data-testid="stMetricValue"] {
 .st-key-lr_breakdown_daypart h3 {margin-top:0 !important;}
 .st-key-br_chart_comparison [data-testid="stCaptionContainer"],
 .st-key-br_chart_contribution [data-testid="stCaptionContainer"] {text-align:center;}
+/* Use the same single card surface for channel KPI cards as Shelf Life. */
+.st-key-lr_drive_card [data-testid="stMetricValue"],
+.st-key-lr_other_card [data-testid="stMetricValue"] {
+    font-size:clamp(2rem,2.9vw,2.65rem) !important;letter-spacing:-.045em !important;
+}
+.st-key-lr_drive_card [data-testid="stMetricDelta"],
+.st-key-lr_other_card [data-testid="stMetricDelta"] {font-size:1.08rem !important;font-weight:700 !important;}
 .st-key-lr_drive_card [data-testid="stMetric"],
-.st-key-lr_other_card [data-testid="stMetric"] {box-shadow:none;}
+.st-key-lr_other_card [data-testid="stMetric"] {padding:1.1rem 1.2rem;}
+/* Legends are no longer allowed to float over Plotly data. */
+.lr-chart-key {display:flex;justify-content:center;align-items:center;gap:1.45rem;
+    min-height:1.6rem;margin:.25rem 0 .2rem;color:var(--br-navy);}
+.lr-chart-key-item {display:inline-flex;align-items:center;gap:.45rem;
+    font-size:.88rem;font-weight:650;white-space:nowrap;}
+.lr-chart-key-dot {display:inline-block;height:.7rem;width:.7rem;flex-shrink:0;border-radius:50%;}
+/* Expander text remains readable regardless of light/dark OS theme. */
+main div[data-testid="stExpander"] summary {color:var(--br-navy) !important;}
+main div[data-testid="stExpander"] summary * {color:var(--br-navy) !important;}
 div[data-testid="stExpander"] {border-color:var(--br-border);border-radius:.8rem;}
 /* Avoid sidebar native text disappearing on dark backgrounds. */
 section[data-testid="stSidebar"] [data-testid="stFileUploader"] {color:var(--br-navy);}
 @media(max-width:850px) {
+    .lr-chart-key {gap:.7rem;flex-wrap:wrap;}
+    .lr-chart-key-item {font-size:.8rem;}
     .block-container {padding-top:1rem;}
     .st-key-br_identity_header {padding:.5rem .1rem .7rem;}
     .st-key-br_identity_header [data-testid="stImage"] img {width:min(245px,100%) !important;}

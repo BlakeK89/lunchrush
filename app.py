@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from hashlib import sha256
+from io import BytesIO
+from zipfile import ZipFile, ZIP_DEFLATED
 from html import escape
 from pathlib import Path
 import json
@@ -52,6 +54,23 @@ def chart_style(fig: go.Figure, *, height: int = 295):
     return fig
 
 
+def pct_points(value):
+    """Store numeric percentages as percentage points for native sorting."""
+    return None if value is None else 100 * value
+
+
+def money_column(label: str, *, decimals=0):
+    return st.column_config.NumberColumn(label, format=f'$%.{decimals}f')
+
+
+def count_column(label: str):
+    return st.column_config.NumberColumn(label, format='%d')
+
+
+def percentage_column(label: str, *, signed=True):
+    return st.column_config.NumberColumn(label, format=('%+.1f%%' if signed else '%.1f%%'))
+
+
 def safe_md(s: object) -> str:
     """Escape dollar signs in dynamically generated Streamlit Markdown."""
     return str(s).replace('$', r'\$')
@@ -70,6 +89,10 @@ def absolute_and_pct(current, prior, *, cash=False):
     diff = current - prior
     unit = (f'${abs(diff):,.0f}' if cash else f'{abs(round(diff)):,}')
     sign = '+' if diff > 0 else ('-' if diff < 0 else '')
+    if cash and abs(diff) >= 1_000_000:
+        unit = format_money(abs(diff), compact=True)
+    elif cash:
+        unit = f'${abs(diff):,.0f}'
     return f'{sign}{unit} ({format_pct(current / prior - 1)})'
 
 
@@ -93,6 +116,32 @@ def load_demo():
     return Analytics(result), result
 
 
+@st.cache_data(show_spinner=False)
+def sample_data_zip() -> bytes:
+    """Package the exact built-in demo CSVs in an importable archive."""
+    buffer = BytesIO()
+    with ZipFile(buffer, 'w', compression=ZIP_DEFLATED, compresslevel=6) as zf:
+        for path in sorted((ROOT / 'data/demo').glob('*.csv')):
+            zf.write(path, arcname=path.name)
+    return buffer.getvalue()
+
+
+def render_sample_download():
+    # Match Shelf Life's small, secondary sample-data utility. Keep the download
+    # available even when users switch to the upload source.
+    with st.container(key='br_sample_download'):
+        st.download_button(
+            'Download The Chicken Coop Sample Data',
+            data=sample_data_zip(),
+            file_name='The_Chicken_Coop_Sample_Data.zip',
+            mime='application/zip',
+            help='Eight CSV sheets from the fictional 40-location demonstration dataset. Upload the ZIP directly to Lunch Rush.',
+            key='download_chicken_coop_sample',
+            type='tertiary',
+            use_container_width=False,
+        )
+
+
 def toggle_help():
     st.session_state['lr_show_help'] = not st.session_state.get('lr_show_help', False)
 
@@ -101,9 +150,10 @@ with st.container(key='br_identity_header'):
     header_title, header_actions = st.columns([3, 2], vertical_alignment='center')
     with header_title:
         st.markdown('<h1 class="br-screen-reader-heading">Lunch Rush by Brand Rundown</h1>', unsafe_allow_html=True)
-        st.image(str(LOGO), width=300)
+        st.image(str(LOGO), width=300, alt='Lunch Rush by Brand Rundown')
     with header_actions:
-        with st.container(horizontal=True, horizontal_alignment='right'):
+        with st.container(horizontal=True, horizontal_alignment='right',
+                          vertical_alignment='center', gap='small'):
             st.button('Back to Dashboard' if st.session_state.get('lr_show_help', False) else 'How It Works',
                       icon=':material/arrow_back:' if st.session_state.get('lr_show_help', False) else ':material/help_outline:',
                       on_click=toggle_help, key='how_it_works_nav')
@@ -141,6 +191,7 @@ with st.sidebar:
             upload = st.file_uploader('Excel workbook or CSV ZIP', type=['xlsx', 'zip'],
                                       help='Use the Lunch Rush V1 schema. Maximum 25 MB.')
         if upload is None:
+            render_sample_download()
             st.info('Upload your data or select the fictional demo.')
             st.stop()
         content = upload.getvalue()
@@ -231,9 +282,7 @@ with st.sidebar:
     if not ids:
         st.warning('No restaurants match the selected filters.'); st.stop()
 
-    st.divider()
-    if is_demo:
-        st.caption('The Chicken Coop demo: 40 fictional locations. Financials, promotions and profitability are planned for V2.')
+    render_sample_download()
 
 regions = {r['region_id']: r['region_name'] for r in a.restaurants.values()}
 prior_start, prior_end = previous_bounds(start, end, mode)
@@ -257,8 +306,7 @@ with st.container(border=True, key='br_reporting_context'):
         st.caption('Restaurant Brand' if is_demo else 'Restaurant Network')
         if is_demo:
             st.markdown('**The Chicken Coop**')
-        st.markdown(f'**{len(ids)} of {len(a.restaurants)} locations**')
-        st.caption(f'{period_option} · {compare_label}')
+        st.caption(f'{len(ids)} of {len(a.restaurants)} locations · {period_option} · {compare_label}')
     with c2:
         st.caption('Selected Reporting Period')
         st.markdown(f'**{date_range(start, end)}**')
@@ -286,16 +334,18 @@ with kpis[2]:
               if comp['prior'] is not None and comp['reason'] is None else None,
               delta_color='off', help='Net sales divided by completed transactions. Higher does not necessarily mean better profitability.')
 with kpis[3]:
-    st.metric('Comparable-Store Sales', 'N/A' if same is None else
-              format_pct(same['comparable_store_sales_growth_pct']),
+    sss_growth = same['comparable_store_sales_growth_pct'] if same is not None else None
+    st.metric('Comparable-Store Sales', format_pct(sss_growth),
+              delta=format_pct(sss_growth) + ' vs prior' if sss_growth is not None else None,
               help='Growth among the same eligible established stores with complete data in both periods.')
 with kpis[4]:
-    st.metric('Comparable Transactions', 'N/A' if same is None else
-              format_pct(same['comparable_store_transaction_growth_pct']),
+    same_tx_growth = same['comparable_store_transaction_growth_pct'] if same is not None else None
+    st.metric('Comparable Transactions', format_pct(same_tx_growth),
+              delta=format_pct(same_tx_growth) + ' vs prior' if same_tx_growth is not None else None,
               help='Order-volume change at the same qualifying stores. Not unique guest traffic.')
-st.caption('Comparable-store results use a matched cohort and exclude locations with insufficient history, disruptions or incomplete reporting. '
-           f'Rolling 52-week AUV: {format_money(auv["average_unit_volume_usd"], compact=True)} '
-           f'({auv["eligible_restaurants"]} fully covered locations).')
+st.caption(f'Comparable-store cohort: {same["eligible_restaurants"]} matched locations. ' if same is not None else 'Comparable stores: requires a comparison period. ')
+st.caption(f'Rolling 52-week AUV: {format_money(auv["average_unit_volume_usd"], compact=True)} '
+           f'({auv["eligible_restaurants"]} qualifying locations).')
 if comp['reason'] and mode != 'none':
     st.info('All-store comparison unavailable: ' + comp['reason'])
 if not current['complete']:
@@ -332,18 +382,23 @@ def overview_summary():
     st.subheader('Executive Summary', anchor=False)
     with st.container(border=True):
         if mode == 'none':
-            st.markdown(f'**Net sales totaled {safe_md(format_money(current["net_sales_usd"]))} across {len(ids)} selected locations.**')
+            st.markdown(f'**Net sales totaled {safe_md(format_money(current["net_sales_usd"], compact=True))} across {len(ids)} selected locations.**')
             st.caption('Select a comparison period to see movements and diagnostic findings.')
         else:
             delta = comp['sales_growth_pct']
             if delta is not None and comp['prior'] is not None:
                 diff = current['net_sales_usd']-comp['prior']['net_sales_usd']
                 direction = 'increased' if diff>0 else 'decreased' if diff<0 else 'were unchanged'
-                st.markdown(f'**Net sales {direction} by {safe_md(format_money(abs(diff)))} '
+                st.markdown(f'**Net sales {direction} by {safe_md(format_money(abs(diff), compact=True))} '
                             f'({format_pct(delta)}) versus the comparison period.**')
                 if comp['transaction_growth_pct'] is not None:
-                    st.markdown(f'Transactions changed {format_pct(comp["transaction_growth_pct"])} '
-                                f'and average check was {safe_md(format_money(current["average_check_usd"]))}.')
+                    transaction_direction = 'increased' if comp['transaction_growth_pct'] > 0 else (
+                    'decreased' if comp['transaction_growth_pct'] < 0 else 'were unchanged')
+                st.markdown(f'Transactions {transaction_direction} {format_pct(abs(comp["transaction_growth_pct"]), signed=False)}; '
+                            f'average check was {safe_md(format_money(current["average_check_usd"]))}.')
+                if same and same.get('comparable_store_transaction_growth_pct') is not None:
+                    st.markdown(f'**Established stores:** Sales {format_pct(same["comparable_store_sales_growth_pct"])} '
+                                f'· transactions {format_pct(same["comparable_store_transaction_growth_pct"])}.')
             else:
                 st.markdown('**A complete all-store comparison is unavailable for the selected period.**')
                 st.caption(comp['reason'] or 'Reporting coverage needs review.')
@@ -374,6 +429,17 @@ def overview_summary():
                 st.caption('These are measurable changes and investigative prompts, not verified causes.')
 
 
+def chart_key(items: list[tuple[str, str]]) -> None:
+    """Consistent, accessible chart legend outside the plotting surface."""
+    legend = ''.join(
+        f'<span class="lr-chart-key-item"><span class="lr-chart-key-dot" '
+        f'style="background:{color}" aria-hidden="true"></span>{escape(label)}</span>'
+        for label, color in items
+    )
+    st.markdown(f'<div class="lr-chart-key" role="group" aria-label="Chart legend">{legend}</div>',
+                unsafe_allow_html=True)
+
+
 def comparison_chart():
     current_rows = week_series(a, start, end, ids)
     older_rows = week_series(a, prior_start, prior_end, ids) if prior_start and comp['reason'] is None else []
@@ -393,7 +459,8 @@ def comparison_chart():
             customdata=[[r['week_end'].strftime('%b %d, %Y')] for r in older_rows],
             hovertemplate='Week %{customdata[0]}<br>$%{y:,.0f}<extra>'+prior_name+'</extra>'))
     chart_style(fig)
-    fig.update_layout(legend=dict(orientation='h',y=1.16,x=.5,xanchor='center'))
+    fig.update_layout(showlegend=False)
+    chart_key([('Current', BLUE)] + ([(prior_name, NAVY)] if older_rows else []))
     fig.update_xaxes(title='Week within selected period',dtick=1 if period_weeks<=13 else None)
     fig.update_yaxes(title='Weekly net sales',tickprefix='$',tickformat='~s',rangemode='normal')
     st.plotly_chart(fig,use_container_width=True,config={'displayModeBar':False})
@@ -416,7 +483,14 @@ def contribution_chart():
                      color_discrete_sequence=[BLUE])
         xlabel = 'Net sales in selected period'
     chart_style(fig)
-    fig.update_layout(showlegend=has_delta,legend=dict(orientation='h',y=1.16,x=.5,xanchor='center'))
+    # Plotly legends previously sat on top of the green bars. Keep the key
+    # outside the chart and show only categories actually present in the data.
+    fig.update_layout(showlegend=False)
+    if has_delta:
+        present = set(data['Movement'])
+        chart_key([(label, color) for label, color in
+                   [('Gains', GREEN), ('Declines', CORAL), ('No change', '#8190AC')]
+                   if label in present])
     fig.update_traces(marker_line_width=0,hovertemplate='%{y}<br>$%{x:,.0f}<extra></extra>')
     fig.update_xaxes(title=xlabel,tickprefix='$',tickformat='~s',zeroline=True,zerolinecolor='#C7D1E8')
     fig.update_yaxes(title=None,showgrid=False)
@@ -467,7 +541,7 @@ def overview():
             st.metric('Other Ordering Channels',format_money(other_sales,compact=True),
                       delta_percent(other_sales,other_prev) if current['complete'] else None,
                       help='Dine-in, pickup, and delivery combined.')
-    st.caption('Together these add up to total net sales above. Drive-thru is one ordering channel, not a separate revenue stream.')
+    st.caption('Drive-thru and other ordering channels sum to total net sales.')
 
 
 def restaurants():
@@ -509,13 +583,18 @@ def restaurants():
     table=pd.DataFrame([{
         'Rank':r['rank'],'Restaurant':display_name(a,r['restaurant_id']),
         'Region':r['region'],'Ownership':r['ownership_type'],'Format':r['restaurant_format'],
-        'Net Sales':format_money(r['net_sales_usd']),
-        'Transactions':format_int(r['transactions']),
-        'Average Check':format_money(r['average_check_usd']),
-        'Sales Change':format_pct(r['sales_growth_pct']) if mode!='none' else '—',
-        'Transaction Change':format_pct(r['transaction_growth_pct']) if mode!='none' else '—',
+        'Net Sales':r['net_sales_usd'],
+        'Transactions':r['transactions'],
+        'Average Check':r['average_check_usd'],
+        'Sales Change':pct_points(r['sales_growth_pct']) if mode!='none' else None,
+        'Transaction Change':pct_points(r['transaction_growth_pct']) if mode!='none' else None,
     } for r in active])
-    st.dataframe(table,hide_index=True,use_container_width=True,height=460)
+    st.dataframe(table,hide_index=True,use_container_width=True,height=460,
+                 column_config={'Net Sales':money_column('Net Sales'),
+                                'Transactions':count_column('Transactions'),
+                                'Average Check':money_column('Average Check',decimals=2),
+                                'Sales Change':percentage_column('Sales Change'),
+                                'Transaction Change':percentage_column('Transaction Change')})
     st.download_button('Download Restaurant Table (CSV)',table.to_csv(index=False).encode('utf-8'),
                        file_name='lunch_rush_restaurants.csv',mime='text/csv')
     if mode!='none':st.caption('Growth is per-location all-store growth, not comparable-chain growth.')
@@ -535,22 +614,35 @@ def channels_dayparts():
                 fig=go.Figure(go.Pie(labels=[r['name'] for r in breakdown],
                     values=[r['net_sales_usd'] for r in breakdown],hole=.58,
                     marker=dict(colors=[BLUE,GREEN,CORAL,'#8190AC','#BCC5D7'][:len(breakdown)]),
-                    textinfo='label+percent',hovertemplate='%{label}<br>$%{value:,.0f}<extra></extra>'))
+                    textinfo='percent',textposition='inside',insidetextorientation='horizontal',
+                    textfont=dict(size=13,color='#FFFFFF'),
+                    hovertemplate='%{label}<br>$%{value:,.0f}<extra></extra>'))
                 chart_style(fig,height=335)
                 fig.update_layout(showlegend=False)
+                chart_key([(r['name'],color) for r,color in zip(
+                    breakdown,[BLUE,GREEN,CORAL,'#8190AC','#BCC5D7'])])
                 st.plotly_chart(fig,use_container_width=True,config={'displayModeBar':False})
         with right:
             rows=[]
             for r in breakdown:
                 comparison=a.compare_sales(start,end,mode=mode,restaurant_ids=ids,**{field:r['name']})
-                rows.append({'Segment':r['name'],'Net Sales':format_money(r['net_sales_usd']),
-                    'Sales Mix':format_pct(r['net_sales_usd']/current['net_sales_usd'],signed=False),
-                    'Transactions':format_int(r['transactions']),
-                    'Average Check':format_money(r['average_check_usd']),
-                    'Sales Change':format_pct(comparison['sales_growth_pct']) if mode!='none' else '—',
-                    'Transaction Change':format_pct(comparison['transaction_growth_pct']) if mode!='none' else '—'})
-            st.dataframe(pd.DataFrame(rows),hide_index=True,use_container_width=True,height=300)
-            st.caption('Channel and daypart independently divide the same POS sales. Do not add them together.')
+                rows.append({'Segment':r['name'],'Net Sales':r['net_sales_usd'],
+                    'Sales Mix':pct_points(r['net_sales_usd']/current['net_sales_usd']),
+                    'Transactions':r['transactions'],
+                    'Average Check':r['average_check_usd'],
+                    'Sales Change':pct_points(comparison['sales_growth_pct']) if mode!='none' else None,
+                    'Transaction Change':pct_points(comparison['transaction_growth_pct']) if mode!='none' else None})
+            with st.container(key=f'lr_table_{field}'):
+                st.dataframe(pd.DataFrame(rows),hide_index=True,use_container_width=True,
+                             height=35*(len(rows)+1)+10,
+                             column_config={'Net Sales':money_column('Net Sales'),
+                                            'Sales Mix':percentage_column('Sales Mix',signed=False),
+                                            'Transactions':count_column('Transactions'),
+                                            'Average Check':money_column('Average Check',decimals=2),
+                                            'Sales Change':percentage_column('Sales Change'),
+                                            'Transaction Change':percentage_column('Transaction Change')})
+            if field == 'daypart':
+                st.caption('Channel and daypart are different views of the same sales; do not add them together.')
 
 
 def menu_performance():
@@ -563,7 +655,7 @@ def menu_performance():
     col[2].metric('Complete Menu Store-Weeks',format_int(menu['eligible_store_weeks']))
     if not menu['items']:
         st.info('No menu records in this selection.');return
-    st.caption('Menu revenues come from item sales records, not a join that duplicates POS channel totals.')
+    st.caption('Menu sales reconcile to POS sales for complete store-weeks.')
     cats=category_summary(menu)
     left,right=st.columns([1.1,1],gap='medium')
     with left:
@@ -578,21 +670,30 @@ def menu_performance():
     with right:
         st.subheader('Category Mix',anchor=False)
         st.dataframe(pd.DataFrame([{'Category':r['category'],
-            'Net Sales':format_money(r['net_sales_usd']),
-            'Sales Mix':format_pct(r['mix_pct'],signed=False),
-            'Units':format_int(r['units_sold'])} for r in cats]),
-            hide_index=True,use_container_width=True,height=335)
+            'Net Sales':r['net_sales_usd'],
+            'Sales Mix':pct_points(r['mix_pct']),
+            'Units':r['units_sold']} for r in cats]),
+            hide_index=True,use_container_width=True,height=35*(len(cats)+1)+10,
+            column_config={'Net Sales':money_column('Net Sales'),
+                           'Sales Mix':percentage_column('Sales Mix',signed=False),
+                           'Units':count_column('Units')})
     st.subheader('Menu-Item Performance',anchor=False)
     matched=matched_menu_growth(a,start,end,ids,mode)
     if mode!='none':st.caption('Item growth uses the same eligible matched-store cohort in each period.')
     rows=pd.DataFrame([{'Item':r['menu_item_name'],'Category':r['category'],
-        'Net Sales':format_money(r['net_sales_usd']),'Units':format_int(r['units_sold']),
-        'Sales Mix':format_pct(r['mix_pct'],signed=False),
-        'Realized Price':format_money(r['realized_item_price_usd']),
-        'Attach Rate':format_pct(r['attach_rate'],signed=False),
-        'Comparable Item Growth':format_pct(matched.get(r['menu_item_id'])) if mode!='none' else '—'}
+        'Net Sales':r['net_sales_usd'],'Units':r['units_sold'],
+        'Sales Mix':pct_points(r['mix_pct']),
+        'Realized Price':r['realized_item_price_usd'],
+        'Attach Rate':pct_points(r['attach_rate']),
+        'Comparable Item Growth':pct_points(matched.get(r['menu_item_id'])) if mode!='none' else None}
         for r in menu['items']])
-    st.dataframe(rows,hide_index=True,use_container_width=True,height=485)
+    st.dataframe(rows,hide_index=True,use_container_width=True,height=485,
+                 column_config={'Net Sales':money_column('Net Sales'),
+                                'Units':count_column('Units'),
+                                'Sales Mix':percentage_column('Sales Mix',signed=False),
+                                'Realized Price':money_column('Realized Price',decimals=2),
+                                'Attach Rate':percentage_column('Attach Rate',signed=False),
+                                'Comparable Item Growth':percentage_column('Comparable Item Growth')})
     st.download_button('Download Menu Table (CSV)',rows.to_csv(index=False).encode('utf-8'),
                        file_name='lunch_rush_menu.csv',mime='text/csv')
     st.caption('Attach rate is orders containing an item divided by completed transactions, where order-level coverage is complete.')
@@ -619,10 +720,10 @@ def insights():
     sales=a.sales_summary(start,end,restaurant_ids=ids)
     menu=a.menu_summary(start,end,restaurant_ids=ids)
     st.dataframe(pd.DataFrame([
-        {'Check':'POS store-weeks','Complete Rows':sales['eligible_store_weeks'],
-         'Incomplete Rows':sales['incomplete_store_weeks'],'Status':'Complete' if sales['complete'] else 'Review'},
-        {'Check':'Menu store-weeks','Complete Rows':menu['eligible_store_weeks'],
-         'Incomplete Rows':menu['incomplete_store_weeks'],'Status':'Complete' if menu['complete'] else 'Review'},
+        {'Check':'POS store-weeks','Complete Store-Weeks':sales['eligible_store_weeks'],
+         'Incomplete Store-Weeks':sales['incomplete_store_weeks'],'Status':'Complete' if sales['complete'] else 'Review'},
+        {'Check':'Menu store-weeks','Complete Store-Weeks':menu['eligible_store_weeks'],
+         'Incomplete Store-Weeks':menu['incomplete_store_weeks'],'Status':'Complete' if menu['complete'] else 'Review'},
     ]),hide_index=True,use_container_width=True)
     if same:
         st.caption(f'Comparable cohort: {same["eligible_restaurants"]} included, '
@@ -634,7 +735,6 @@ def insights():
     if valid.warnings:
         with st.expander('Source warnings'):
             for warning in valid.warnings:st.caption('• '+warning)
-    st.caption('Missing promotions or financial inputs are unavailable, not zero. Those modules are deferred to V2.')
 
 
 tab_overview, tab_locations, tab_channels, tab_menu, tab_insights = st.tabs([
@@ -646,6 +746,3 @@ with tab_channels:channels_dayparts()
 with tab_menu:menu_performance()
 with tab_insights:insights()
 
-st.divider()
-st.caption('Lunch Rush by Brand Rundown · Data-informed investigation, not automated causal conclusions.'
-           + (' Demo figures are fictional.' if is_demo else ''))
