@@ -129,8 +129,8 @@ with st.sidebar:
     st.caption('Choose your data and time period.')
     with st.container(key='br_data_source_control'):
         data_source = st.radio('Data Source',
-                               ['Fictional Demo (Sample Data)', 'Upload Your Data'])
-    if data_source.startswith('Fictional'):
+                               ['The Chicken Coop (Sample Data)', 'Upload Your Data'])
+    if data_source == 'The Chicken Coop (Sample Data)':
         a, valid = load_demo()
         is_demo = True
     else:
@@ -232,7 +232,8 @@ with st.sidebar:
         st.warning('No restaurants match the selected filters.'); st.stop()
 
     st.divider()
-    st.caption('40 fictional locations in the demo. Financials, promotions and profitability are planned for V2.') if is_demo else None
+    if is_demo:
+        st.caption('The Chicken Coop demo: 40 fictional locations. Financials, promotions and profitability are planned for V2.')
 
 regions = {r['region_id']: r['region_name'] for r in a.restaurants.values()}
 prior_start, prior_end = previous_bounds(start, end, mode)
@@ -253,7 +254,9 @@ def date_range(first: date, last: date) -> str:
 with st.container(border=True, key='br_reporting_context'):
     c1, c2, c3 = st.columns([1.1, 1.25, 1.25], gap='medium')
     with c1:
-        st.caption('Restaurant Network')
+        st.caption('Restaurant Brand' if is_demo else 'Restaurant Network')
+        if is_demo:
+            st.markdown('**The Chicken Coop**')
         st.markdown(f'**{len(ids)} of {len(a.restaurants)} locations**')
         st.caption(f'{period_option} · {compare_label}')
     with c2:
