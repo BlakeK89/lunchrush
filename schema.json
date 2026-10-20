@@ -1,0 +1,536 @@
+{
+  "version": "0.1-planning",
+  "product": "Lunch Rush by Brand Rundown",
+  "intended_audience": "Corporate QSR and fast-casual brand teams",
+  "concept": "Fictional hybrid chicken-focused chain; 40 restaurants, four regions, 24 months planned",
+  "grain_policy": "Independent weekly store/channel/daypart and store/item grains; never multiply fact rows with a many-to-many join",
+  "calendar": {
+    "week_end": "Sunday",
+    "week_begins": "Monday",
+    "period_end_inclusive": true,
+    "comparison_yoy_offset_days": 364,
+    "currency": "USD",
+    "time_zone": "restaurant local time",
+    "fiscal_53_week_calendar": "not supported in V1"
+  },
+  "tables": {
+    "Restaurant_Master": {
+      "required": true,
+      "grain": "One row per restaurant",
+      "primary_key": [
+        "restaurant_id"
+      ],
+      "fields": [
+        {
+          "name": "restaurant_id",
+          "type": "text",
+          "required": true,
+          "definition": "Permanent unique location identifier"
+        },
+        {
+          "name": "restaurant_name",
+          "type": "text",
+          "required": true,
+          "definition": "Display name"
+        },
+        {
+          "name": "region_id",
+          "type": "text",
+          "required": true,
+          "definition": "Region identifier"
+        },
+        {
+          "name": "region_name",
+          "type": "text",
+          "required": true,
+          "definition": "Region display name"
+        },
+        {
+          "name": "ownership_type",
+          "type": "enum",
+          "required": true,
+          "definition": "Corporate or franchise ownership",
+          "allowed_values": [
+            "Company",
+            "Franchise"
+          ]
+        },
+        {
+          "name": "restaurant_format",
+          "type": "enum",
+          "required": true,
+          "definition": "Dominant physical restaurant format",
+          "allowed_values": [
+            "Drive-Thru",
+            "Dine-In",
+            "Pickup-Focused"
+          ]
+        },
+        {
+          "name": "opened_on",
+          "type": "date",
+          "required": true,
+          "definition": "First trading date (YYYY-MM-DD)"
+        },
+        {
+          "name": "closed_on",
+          "type": "date",
+          "required": false,
+          "definition": "Last trading date; blank if still operating"
+        },
+        {
+          "name": "timezone",
+          "type": "text",
+          "required": true,
+          "definition": "IANA restaurant time zone, e.g. America/Los_Angeles"
+        }
+      ],
+      "notes": "One region per restaurant during V1 history; reorganizations require a later effective-dated dimension."
+    },
+    "Menu_Master": {
+      "required": true,
+      "grain": "One row per menu item",
+      "primary_key": [
+        "menu_item_id"
+      ],
+      "fields": [
+        {
+          "name": "menu_item_id",
+          "type": "text",
+          "required": true,
+          "definition": "Stable SKU/menu item identifier"
+        },
+        {
+          "name": "menu_item_name",
+          "type": "text",
+          "required": true,
+          "definition": "Display name"
+        },
+        {
+          "name": "menu_category",
+          "type": "enum",
+          "required": true,
+          "definition": "Menu reporting category",
+          "allowed_values": [
+            "Sandwiches",
+            "Tenders",
+            "Wraps",
+            "Bowls",
+            "Salads",
+            "Sides",
+            "Breakfast",
+            "Beverages",
+            "Other"
+          ]
+        },
+        {
+          "name": "introduced_on",
+          "type": "date",
+          "required": true,
+          "definition": "First chain-wide introduction date"
+        },
+        {
+          "name": "retired_on",
+          "type": "date",
+          "required": false,
+          "definition": "Chain-wide retirement date, blank if active"
+        }
+      ],
+      "notes": "Chain-wide dates do not establish availability at each restaurant. Missing item rows are not presumed zero sales."
+    },
+    "Source_Log": {
+      "required": true,
+      "grain": "One row per source identifier",
+      "primary_key": [
+        "source_id"
+      ],
+      "fields": [
+        {
+          "name": "source_id",
+          "type": "text",
+          "required": true,
+          "definition": "Unique source key referenced in fact tables"
+        },
+        {
+          "name": "source_type",
+          "type": "text",
+          "required": true,
+          "definition": "POS export, store status, finance, campaign system etc."
+        },
+        {
+          "name": "origin_description",
+          "type": "text",
+          "required": true,
+          "definition": "System/export provenance"
+        },
+        {
+          "name": "sales_basis",
+          "type": "text",
+          "required": true,
+          "definition": "What the data measures, e.g. consumer restaurant POS, not corporate wholesale"
+        },
+        {
+          "name": "coverage_notes",
+          "type": "text",
+          "required": true,
+          "definition": "Store/date/channel coverage and exceptions"
+        },
+        {
+          "name": "extracted_on",
+          "type": "date",
+          "required": true,
+          "definition": "Extraction/as-of date"
+        }
+      ],
+      "notes": ""
+    },
+    "Store_Week_Status": {
+      "required": true,
+      "grain": "One row per restaurant \u00d7 week",
+      "primary_key": [
+        "restaurant_id",
+        "week_end"
+      ],
+      "fields": [
+        {
+          "name": "week_end",
+          "type": "date",
+          "required": true,
+          "definition": "Reporting Sunday, restaurant local week"
+        },
+        {
+          "name": "restaurant_id",
+          "type": "text",
+          "required": true,
+          "definition": "Foreign key Restaurant_Master"
+        },
+        {
+          "name": "expected_operating_days",
+          "type": "integer",
+          "required": true,
+          "definition": "Days scheduled to trade that week (1-7)"
+        },
+        {
+          "name": "actual_operating_days",
+          "type": "integer",
+          "required": true,
+          "definition": "Days actually traded (0 through expected)"
+        },
+        {
+          "name": "coverage_status",
+          "type": "enum",
+          "required": true,
+          "definition": "POS completeness for all channels/dayparts",
+          "allowed_values": [
+            "Complete",
+            "Partial",
+            "Missing"
+          ]
+        },
+        {
+          "name": "menu_coverage_status",
+          "type": "enum",
+          "required": true,
+          "definition": "Itemized menu coverage",
+          "allowed_values": [
+            "Complete",
+            "Partial",
+            "Missing"
+          ]
+        },
+        {
+          "name": "disruption_flag",
+          "type": "boolean",
+          "required": true,
+          "definition": "TRUE if closure/disruption makes week not comparable"
+        },
+        {
+          "name": "source_id",
+          "type": "text",
+          "required": true,
+          "definition": "Foreign key Source_Log"
+        }
+      ],
+      "notes": "Must exist for every reported restaurant-week; separate true zero sales from missing feed. Partial weeks are excluded from comparisons requiring complete periods."
+    },
+    "Sales_Weekly": {
+      "required": true,
+      "grain": "One row per restaurant \u00d7 week \u00d7 channel \u00d7 daypart",
+      "primary_key": [
+        "restaurant_id",
+        "week_end",
+        "channel",
+        "daypart"
+      ],
+      "fields": [
+        {
+          "name": "week_end",
+          "type": "date",
+          "required": true,
+          "definition": "Reporting Sunday"
+        },
+        {
+          "name": "restaurant_id",
+          "type": "text",
+          "required": true,
+          "definition": "Foreign key Restaurant_Master"
+        },
+        {
+          "name": "channel",
+          "type": "enum",
+          "required": true,
+          "definition": "Mutually exclusive order attribution",
+          "allowed_values": [
+            "Drive-Thru",
+            "Dine-In",
+            "Pickup",
+            "Delivery",
+            "Other"
+          ]
+        },
+        {
+          "name": "daypart",
+          "type": "enum",
+          "required": true,
+          "definition": "Mutually exclusive, based on local order placed time",
+          "allowed_values": [
+            "Breakfast",
+            "Lunch",
+            "Dinner",
+            "Late Night",
+            "Other"
+          ]
+        },
+        {
+          "name": "gross_sales_usd",
+          "type": "money",
+          "required": true,
+          "definition": "Product/menu gross sales before discounts/refunds, excluding sales tax, tips, and third-party pass-through fees"
+        },
+        {
+          "name": "discount_usd",
+          "type": "money",
+          "required": true,
+          "definition": "Discount deductions, entered as positive dollars"
+        },
+        {
+          "name": "refund_usd",
+          "type": "money",
+          "required": true,
+          "definition": "Refund/return deductions, entered as positive dollars"
+        },
+        {
+          "name": "net_sales_usd",
+          "type": "money",
+          "required": true,
+          "definition": "Gross minus discounts minus refunds, excluding tax, tips and pass-through fees"
+        },
+        {
+          "name": "transaction_count",
+          "type": "integer",
+          "required": true,
+          "definition": "Unique completed non-voided orders attributed once to one channel and one daypart"
+        },
+        {
+          "name": "source_id",
+          "type": "text",
+          "required": true,
+          "definition": "Foreign key Source_Log"
+        }
+      ],
+      "notes": "Source of truth for sales, transactions, average check, channels, dayparts and comparable-location sales. Zero-activity weeks require explicit zero POS record."
+    },
+    "Menu_Weekly": {
+      "required": true,
+      "grain": "One row per restaurant \u00d7 week \u00d7 menu item",
+      "primary_key": [
+        "restaurant_id",
+        "week_end",
+        "menu_item_id"
+      ],
+      "fields": [
+        {
+          "name": "week_end",
+          "type": "date",
+          "required": true,
+          "definition": "Reporting Sunday"
+        },
+        {
+          "name": "restaurant_id",
+          "type": "text",
+          "required": true,
+          "definition": "Foreign key Restaurant_Master"
+        },
+        {
+          "name": "menu_item_id",
+          "type": "text",
+          "required": true,
+          "definition": "Foreign key Menu_Master"
+        },
+        {
+          "name": "units_sold",
+          "type": "integer",
+          "required": true,
+          "definition": "Net sold units (V1 nonnegative); all chargeable items and modifiers represented as menu items"
+        },
+        {
+          "name": "item_order_count",
+          "type": "integer",
+          "required": false,
+          "definition": "Distinct completed orders containing this item (optional for attach rate)"
+        },
+        {
+          "name": "item_net_sales_usd",
+          "type": "money",
+          "required": true,
+          "definition": "Net item revenue after attributed discounts/refunds, excluding tax/tips/pass-through fees"
+        },
+        {
+          "name": "source_id",
+          "type": "text",
+          "required": true,
+          "definition": "Foreign key Source_Log"
+        }
+      ],
+      "notes": "No order/transaction counts added over menu items. Does not contain channel or daypart: cross-filtering menu item sales by them is unsupported. Complete restaurant-weeks must reconcile to POS net sales."
+    },
+    "Promotions_Weekly": {
+      "required": false,
+      "grain": "One row per restaurant \u00d7 week \u00d7 promotion",
+      "primary_key": [
+        "restaurant_id",
+        "week_end",
+        "promotion_id"
+      ],
+      "fields": [
+        {
+          "name": "week_end",
+          "type": "date",
+          "required": true,
+          "definition": "Reporting Sunday"
+        },
+        {
+          "name": "restaurant_id",
+          "type": "text",
+          "required": true,
+          "definition": "Foreign key Restaurant_Master"
+        },
+        {
+          "name": "promotion_id",
+          "type": "text",
+          "required": true,
+          "definition": "Unique campaign identifier"
+        },
+        {
+          "name": "promotion_name",
+          "type": "text",
+          "required": true,
+          "definition": "Promotion label"
+        },
+        {
+          "name": "redemption_count",
+          "type": "integer",
+          "required": true,
+          "definition": "Attributed redemptions, not necessarily distinct transactions across overlapping promotions"
+        },
+        {
+          "name": "discount_cost_usd",
+          "type": "money",
+          "required": true,
+          "definition": "Discount cost subset of POS discounts; not incremental revenue"
+        },
+        {
+          "name": "source_id",
+          "type": "text",
+          "required": true,
+          "definition": "Foreign key Source_Log"
+        }
+      ],
+      "notes": "Future module only; do not claim lift or add promotion sales into POS totals. Multiple discounts can apply to one order."
+    },
+    "Financials_Weekly": {
+      "required": false,
+      "grain": "One row per restaurant \u00d7 week",
+      "primary_key": [
+        "restaurant_id",
+        "week_end"
+      ],
+      "fields": [
+        {
+          "name": "week_end",
+          "type": "date",
+          "required": true,
+          "definition": "Reporting Sunday"
+        },
+        {
+          "name": "restaurant_id",
+          "type": "text",
+          "required": true,
+          "definition": "Foreign key Restaurant_Master"
+        },
+        {
+          "name": "financial_net_revenue_usd",
+          "type": "money",
+          "required": true,
+          "definition": "Financial system net revenue under documented accounting basis"
+        },
+        {
+          "name": "food_cogs_usd",
+          "type": "money",
+          "required": true,
+          "definition": "Food and paper cost, positive"
+        },
+        {
+          "name": "labor_cost_usd",
+          "type": "money",
+          "required": true,
+          "definition": "Payroll and directly related cost, positive"
+        },
+        {
+          "name": "other_operating_cost_usd",
+          "type": "money",
+          "required": true,
+          "definition": "Other restaurant operating expenses under documented scope, positive"
+        },
+        {
+          "name": "source_id",
+          "type": "text",
+          "required": true,
+          "definition": "Foreign key Source_Log"
+        }
+      ],
+      "notes": "Future module only. Reconcile POS vs financial revenue before showing ratios. Simplified operating contribution is not audited operating profit or EBITDA."
+    }
+  },
+  "kpis": {
+    "net_sales_usd": "SUM Sales_Weekly.net_sales_usd over selected fully reported scope",
+    "transactions": "SUM Sales_Weekly.transaction_count over selected fully reported scope",
+    "average_check_usd": "net_sales_usd / transactions, N/A when transactions = 0; calculate from summed numerators/denominators, never average rows",
+    "gross_sales_usd": "SUM Sales_Weekly.gross_sales_usd",
+    "discount_rate": "SUM discount_usd / SUM gross_sales_usd, N/A when gross=0",
+    "sales_growth_pct": "(current net sales / matched prior net sales) - 1; N/A if prior <= 0 or incomplete",
+    "transaction_growth_pct": "(current transactions / matched prior transactions) - 1; N/A if prior <= 0 or incomplete",
+    "comparable_store_sales_growth_pct": "(SUM current sales across identical eligible locations and aligned weeks / SUM prior sales across same exact set) - 1",
+    "average_unit_volume_usd": "SUM restaurant net sales / count of eligible restaurant-year equivalents for selected reporting period; do not label an arbitrary partial-period average as annual AUV",
+    "menu_item_mix_pct": "SUM item_net_sales_usd / SUM all menu item revenue in same complete menu scope",
+    "menu_item_attach_rate": "SUM item_order_count / SUM Sales_Weekly.transaction_count over identical store-weeks; only when item_order_count complete and menu item rows explicitly cover target stores",
+    "realized_item_price_usd": "SUM item_net_sales_usd / SUM units_sold; not menu/list price; N/A when units=0",
+    "store_rank": "Sort comparable net sales or growth within an explicitly selected valid cohort; do not rank partial-coverage stores as if comparable",
+    "promotional_discount_rate_optional": "SUM Promotions_Weekly.discount_cost_usd / SUM Sales_Weekly.gross_sales_usd, only same scope with complete attribution",
+    "financial_operating_contribution_optional": "financial_net_revenue_usd - food_cogs_usd - labor_cost_usd - other_operating_cost_usd; only if expense categories are complete and scope matched"
+  },
+  "rules": [
+    "Week_end must be Sunday and a true date, not an arbitrary string; one calendar throughout input.",
+    "All primary keys unique; all foreign keys resolve. Reject future dates after extraction and dates outside operating life.",
+    "For Sales_Weekly: gross, discount, refund and transaction count are >=0; net = gross-discount-refund within $0.01; negative net cannot be used for average check without review.",
+    "For Menu_Weekly: units >=0; item_order_count if present 0..units, and no greater than same-store-week transactions; item revenue may be nonzero only with positive units (V1).",
+    "For every Store_Week_Status=Complete, require matching Sales_Weekly coverage, including explicit zero record when there were no orders; missing records are never silently zero.",
+    "For menu_coverage_status=Complete and POS coverage Complete: SUM Menu_Weekly.item_net_sales_usd must equal store-week SUM Sales_Weekly.net_sales_usd within $0.01. Otherwise reject or flag for remediation. Partial/Missing menu status disables whole-store menu-mix and menu-to-sales claims.",
+    "Source IDs and sale basis must be documented; refuse to blend restaurant consumer POS with corporate royalties, franchise billings, or vendor shipments.",
+    "No many-to-many raw fact joins. Filter and aggregate each fact table to matching store-week grains, then join aggregate results only.",
+    "For YoY comparison align each selected current week to 364 days earlier, require complete records for same store-weeks and select one fixed cohort for the whole compared period.",
+    "Comparable store eligible only if open >=13 calendar months as of current comparison week, has complete data and expected=actual operating days >0 in both aligned weeks, and no disruption flags; require eligibility for every matched week in the selected window.",
+    "53-week fiscal calendars, store region reassignments, split tickets across dayparts, and inferred promo lift are unsupported in V1.",
+    "Zero versus missing must remain distinct; never infer zero sold items from absent Menu_Weekly rows."
+  ]
+}

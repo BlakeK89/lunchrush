@@ -1,0 +1,41 @@
+restaurant_id,restaurant_name,region_id,region_name,ownership_type,restaurant_format,opened_on,closed_on,timezone
+R001,Costa Mesa,WEST,West,Company,Drive-Thru,2022-04-06,,America/Los_Angeles
+R002,Santa Ana,WEST,West,Company,Dine-In,2023-07-11,,America/Los_Angeles
+R003,Long Beach,WEST,West,Franchise,Pickup-Focused,2021-10-16,,America/Los_Angeles
+R004,Pasadena,WEST,West,Company,Drive-Thru,2022-01-21,,America/Los_Angeles
+R005,Oceanside,WEST,West,Company,Dine-In,2023-04-26,,America/Los_Angeles
+R006,Irvine,WEST,West,Franchise,Drive-Thru,2021-07-05,,America/Los_Angeles
+R007,Anaheim,WEST,West,Franchise,Dine-In,2022-10-10,,America/Los_Angeles
+R008,Glendale,WEST,West,Company,Pickup-Focused,2025-02-06,,America/Los_Angeles
+R009,San Diego,WEST,West,Franchise,Drive-Thru,2025-06-10,,America/Los_Angeles
+R010,Ventura,WEST,West,Company,Dine-In,2026-03-16,,America/Los_Angeles
+R011,Tempe,SOUTHWEST,Southwest,Company,Drive-Thru,2023-10-04,,America/Phoenix
+R012,Mesa,SOUTHWEST,Southwest,Franchise,Dine-In,2021-01-09,,America/Phoenix
+R013,Chandler,SOUTHWEST,Southwest,Company,Pickup-Focused,2022-04-14,,America/Phoenix
+R014,Scottsdale,SOUTHWEST,Southwest,Franchise,Drive-Thru,2023-07-19,,America/Phoenix
+R015,Phoenix North,SOUTHWEST,Southwest,Franchise,Dine-In,2021-10-24,,America/Phoenix
+R016,Phoenix Central,SOUTHWEST,Southwest,Company,Drive-Thru,2022-01-03,,America/Phoenix
+R017,Gilbert,SOUTHWEST,Southwest,Company,Dine-In,2023-04-08,,America/Phoenix
+R018,Peoria,SOUTHWEST,Southwest,Franchise,Pickup-Focused,2025-02-14,,America/Phoenix
+R019,Tucson,SOUTHWEST,Southwest,Company,Drive-Thru,2025-06-18,,America/Phoenix
+R020,Flagstaff,SOUTHWEST,Southwest,Company,Dine-In,2026-04-20,,America/Phoenix
+R021,Naperville,MIDWEST,Midwest,Franchise,Drive-Thru,2021-04-02,,America/Chicago
+R022,Evanston,MIDWEST,Midwest,Company,Dine-In,2022-07-07,,America/Chicago
+R023,Oak Park,MIDWEST,Midwest,Company,Pickup-Focused,2023-10-12,,America/Chicago
+R024,Schaumburg,MIDWEST,Midwest,Franchise,Drive-Thru,2021-01-17,,America/Chicago
+R025,Aurora,MIDWEST,Midwest,Company,Dine-In,2022-04-22,,America/Chicago
+R026,Joliet,MIDWEST,Midwest,Company,Drive-Thru,2023-07-01,,America/Chicago
+R027,Elgin,MIDWEST,Midwest,Franchise,Dine-In,2021-10-06,,America/Chicago
+R028,Chicago Loop,MIDWEST,Midwest,Franchise,Pickup-Focused,2025-02-06,,America/Chicago
+R029,Tinley Park,MIDWEST,Midwest,Company,Drive-Thru,2025-06-10,,America/Chicago
+R030,Skokie,MIDWEST,Midwest,Franchise,Dine-In,2026-05-12,,America/Chicago
+R031,Atlanta,SOUTHEAST,Southeast,Company,Drive-Thru,2022-10-26,,America/New_York
+R032,Decatur,SOUTHEAST,Southeast,Company,Dine-In,2023-01-05,,America/New_York
+R033,Marietta,SOUTHEAST,Southeast,Franchise,Pickup-Focused,2021-04-10,,America/New_York
+R034,Roswell,SOUTHEAST,Southeast,Company,Drive-Thru,2022-07-15,,America/New_York
+R035,Alpharetta,SOUTHEAST,Southeast,Franchise,Dine-In,2023-10-20,,America/New_York
+R036,Sandy Springs,SOUTHEAST,Southeast,Franchise,Drive-Thru,2021-01-25,,America/New_York
+R037,Duluth,SOUTHEAST,Southeast,Company,Dine-In,2022-04-04,,America/New_York
+R038,Smyrna,SOUTHEAST,Southeast,Company,Pickup-Focused,2025-02-14,,America/New_York
+R039,Brookhaven,SOUTHEAST,Southeast,Franchise,Drive-Thru,2025-06-18,,America/New_York
+R040,Dunwoody,SOUTHEAST,Southeast,Company,Dine-In,2026-06-16,,America/New_York
