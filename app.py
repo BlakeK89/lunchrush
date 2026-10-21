@@ -754,10 +754,11 @@ def restaurant_comparison_builder(eligible_ranked: list[dict]) -> None:
     st.download_button('Download Restaurant Comparison (CSV)',
                        table.to_csv(index=False).encode('utf-8'),
                        file_name='lunch_rush_restaurant_comparison.csv', mime='text/csv')
-    st.caption('Sales and transactions include complete reported weeks only. '
-               'Incomplete or disrupted locations remain visible and are flagged; '
-               'ranking eligibility is stricter. Regional averages are transaction-weighted, '
-               'and regional changes are calculated from combined sales, not averaged percentages.')
+    st.caption('Only weeks with complete data are included in sales and transaction totals. '
+               'Restaurants with missing data or disruptions still appear, but may be excluded '
+               'from rankings.')
+    st.caption('Regional results are calculated using the combined sales and transactions '
+               'of all selected restaurants.')
 
 
 def channels_dayparts():

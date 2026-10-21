@@ -189,7 +189,7 @@ def table_html(frame, *, key, formats=None, change_columns=(), widths=None,
                      f'data-missing="{int(missing)}"')
             cell_inline = 'text-align:center !important; vertical-align:middle;'
             if name in IDENTITY_COLUMNS:
-                cell_inline += ' color:#000 !important; font-weight:700 !important;'
+                cell_inline += ' color:#000 !important; font-weight:400 !important;'
             elif missing:
                 cell_inline += ' color:#344054 !important; font-weight:650 !important;'
             if name in pinned:
@@ -239,7 +239,7 @@ __ID__ tbody tr { --lr-row-bg:#FFF; }
 __ID__ tbody tr:nth-child(even) { --lr-row-bg:#FAFBFF; }
 __ID__ td { background:var(--lr-row-bg); color:#081043; font-weight:500; }
 __ID__ tbody tr:hover { --lr-row-bg:#F0F4FF; }
-__ID__ td.lr-identity { color:#000 !important; font-weight:650; }
+__ID__ td.lr-identity { color:#000 !important; font-weight:400; }
 __ID__ td.lr-missing { color:#344054 !important; font-weight:650; }
 __ID__ td.lr-up { color:#166534; background:#DCFCE7; font-weight:700; }
 __ID__ td.lr-down { color:#991B1B; background:#FEE2E2; font-weight:700; }
