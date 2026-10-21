@@ -183,8 +183,49 @@ div[data-testid="stMetricValue"] {
 .st-key-lr_drive_card [data-testid="stMetric"],
 .st-key-lr_other_card [data-testid="stMetric"] {box-shadow:none;}
 div[data-testid="stExpander"] {border-color:var(--br-border);border-radius:.8rem;}
-/* Avoid sidebar native text disappearing on dark backgrounds. */
+/* All sidebar actions need legible white text against the blue surface.
+   Select dropdowns and cream upload panels retain their dark text. */
+section[data-testid="stSidebar"] [data-testid="stExpander"] summary,
+section[data-testid="stSidebar"] [data-testid="stExpander"] summary *,
+section[data-testid="stSidebar"] [data-testid="stExpander"] [data-testid="stExpanderToggleIcon"],
+section[data-testid="stSidebar"] .st-key-br_sample_download button,
+section[data-testid="stSidebar"] .st-key-br_sample_download button *,
+section[data-testid="stSidebar"] .st-key-br_sample_download [data-testid="stMarkdownContainer"] p {
+    color:#FFFFFF !important; opacity:1 !important;
+}
+section[data-testid="stSidebar"] .st-key-br_sample_download {
+    border-top:1px solid rgba(255,255,255,.42);padding-top:.8rem;margin-top:1.15rem;
+}
+section[data-testid="stSidebar"] .st-key-br_sample_download button {
+    border:1px solid rgba(255,255,255,.85) !important;
+    background:transparent !important;font-weight:650 !important;
+    border-radius:.5rem !important;padding:.35rem .45rem !important;
+    line-height:1.25 !important;font-size:.82rem !important;
+}
+section[data-testid="stSidebar"] .st-key-br_sample_download button:hover {
+    background:rgba(255,255,255,.15) !important;
+}
 section[data-testid="stSidebar"] [data-testid="stFileUploader"] {color:var(--br-navy);}
+/* Streamlit renders these chart legends as standalone HTML. Without styling,
+   labels run together and color indicators disappear. */
+.lr-chart-key {
+    display:flex;flex-wrap:wrap;align-items:center;justify-content:center;
+    column-gap:1.6rem;row-gap:.5rem;width:100%;padding:.15rem 0 .35rem;
+}
+.lr-chart-key-item {
+    display:inline-flex;align-items:center;gap:.48rem;
+    color:var(--br-navy) !important;font-size:.92rem;font-weight:650;
+    line-height:1.35;white-space:nowrap;
+}
+.lr-chart-key-dot {
+    display:inline-block;width:.7rem;height:.7rem;min-width:.7rem;
+    border-radius:50%;border:1px solid rgba(8,16,67,.1);
+}
+/* Prevent Plotly/AG Grid cards from inheriting muted content colors. */
+.st-key-br_chart_comparison,.st-key-br_chart_contribution,
+.st-key-lr_chart_restaurants_top,.st-key-lr_chart_restaurants_regions,
+.st-key-lr_chart_menu_categories,.st-key-lr_breakdown_channel,
+.st-key-lr_breakdown_daypart {color:var(--br-navy) !important;}
 @media(max-width:850px) {
     .block-container {padding-top:1rem;}
     .st-key-br_identity_header {padding:.5rem .1rem .7rem;}

@@ -27,6 +27,7 @@ class FakeStreamlit(ModuleType):
         self.figures = 0
         self.tables = 0
         self.dataframes = []
+        self.grids = []
         self.metrics = 0
         self.tabs_created = []
         self.chart_traces = []
@@ -73,20 +74,30 @@ class FakeStreamlit(ModuleType):
 class TestAppFlows(unittest.TestCase):
     def run_app(self,**kwargs):
         previous=sys.modules.get('streamlit')
+        previous_ag=sys.modules.get('st_aggrid')
+        previous_grid=sys.modules.pop('lunch_rush.grids',None)
         try:
             stub=FakeStreamlit(**kwargs)
+            ag_stub=ModuleType('st_aggrid')
+            ag_stub.JsCode=lambda code: {'javascript':code}
+            ag_stub.AgGrid=lambda frame,**opts:stub.grids.append((frame,opts))
             sys.modules['streamlit']=stub
+            sys.modules['st_aggrid']=ag_stub
             runpy.run_path(str(ROOT/'app.py'),run_name='__main__')
             return stub
         finally:
             if previous is None:sys.modules.pop('streamlit',None)
             else:sys.modules['streamlit']=previous
+            if previous_ag is None:sys.modules.pop('st_aggrid',None)
+            else:sys.modules['st_aggrid']=previous_ag
+            sys.modules.pop('lunch_rush.grids',None)
+            if previous_grid is not None:sys.modules['lunch_rush.grids']=previous_grid
 
     def test_all_five_tabs_render(self):
         stub=self.run_app()
         self.assertEqual(stub.tabs_created,['Overview','Restaurants','Channels & Dayparts','Menu Performance','Insights'])
         self.assertGreaterEqual(stub.figures, 5)
-        self.assertGreaterEqual(stub.tables, 4)
+        self.assertGreaterEqual(len(stub.grids), 6)
         self.assertGreaterEqual(stub.metrics, 12)
         self.assertEqual(len(stub.warnings),0)
         self.assertEqual(len(stub.downloads),3)
@@ -113,32 +124,34 @@ class TestAppFlows(unittest.TestCase):
     def test_data_tables_sort_numerically_and_do_not_show_blank_padding(self):
         import pandas as pd
         stub=self.run_app()
-        money_tables=[(df,kws) for df,kws in stub.dataframes
+        money_tables=[(df,kws) for df,kws in stub.grids
                       if isinstance(df,pd.DataFrame) and 'Net Sales' in df.columns]
         self.assertGreaterEqual(len(money_tables),4)
         for df,kws in money_tables:
             self.assertTrue(pd.api.types.is_numeric_dtype(df['Net Sales']),str(df.columns))
         segments=[(df,kws) for df,kws in money_tables if 'Segment' in df.columns]
         self.assertEqual([len(df) for df,_ in segments],[4,3])
-        self.assertEqual([kws['height'] for _,kws in segments],[185,150])
+        self.assertEqual([kws['gridOptions'].get('domLayout') for _,kws in segments],['autoHeight','autoHeight'])
 
     def test_number_grouping_and_readable_column_widths(self):
         stub = self.run_app()
-        tables = [(df, kws) for df, kws in stub.dataframes if 'Net Sales' in df.columns]
+        tables = [(df, kws) for df, kws in stub.grids if 'Net Sales' in df.columns]
         self.assertGreaterEqual(len(tables), 4)
         for df, kwargs in tables:
-            net_sales = kwargs['column_config']['Net Sales']['kwargs']
-            self.assertEqual(net_sales['format'], '$%,.0f')
-            self.assertGreaterEqual(net_sales['width'], 125)
+            config = {x['field']:x for x in kwargs['gridOptions']['columnDefs']}
+            self.assertIn('valueFormatter',config['Net Sales'])
+            self.assertGreaterEqual(config['Net Sales']['minWidth'], 125)
             self.assertTrue(df['Net Sales'].dtype.kind in 'fi')
+            self.assertTrue(all(x['sortable'] for x in config.values()))
+            self.assertTrue(all(x['cellStyle'] for x in config.values()))
         channels = [(df,kws) for df,kws in tables if 'Segment' in df.columns]
         self.assertEqual([len(df) for df,_ in channels], [4,3])
         for df,kws in channels:
-            configs = kws['column_config']
-            self.assertEqual(configs['Transactions']['kwargs']['format'], '%,d')
-            self.assertEqual(configs['Average Check']['kwargs']['format'], '$%,.2f')
-            self.assertGreaterEqual(configs['Transaction Change']['kwargs']['width'], 150)
-            self.assertEqual(kws['use_container_width'], True)
+            config = {x['field']:x for x in kws['gridOptions']['columnDefs']}
+            self.assertIn('valueFormatter',config['Transactions'])
+            self.assertIn('valueFormatter',config['Average Check'])
+            self.assertGreaterEqual(config['Transaction Change']['minWidth'],150)
+            self.assertTrue(kws['allow_unsafe_jscode'])
 
     def test_plain_english_labels_and_exclusion_reasons(self):
         stub = self.run_app()
@@ -149,7 +162,7 @@ class TestAppFlows(unittest.TestCase):
         self.assertIn('percentage of orders that included an item', captions)
         self.assertIn('Menu-item growth compares sales', captions)
         self.assertIn('Each row shows how that restaurant performed', captions)
-        reasons = [df for df, _ in stub.dataframes if 'Reason' in df.columns]
+        reasons = [df for df, _ in stub.grids if 'Reason' in df.columns]
         self.assertTrue(reasons)
         self.assertTrue(all('_' not in reason and len(reason.split()) > 7
                             for df in reasons for reason in df['Reason']))
@@ -165,6 +178,32 @@ class TestAppFlows(unittest.TestCase):
             hover = fig['layout']['hoverlabel']
             self.assertGreaterEqual(hover['font']['size'], 16)
             self.assertIn('Net sales:', fig['data'][0]['hovertemplate'])
+
+    def test_grid_centered_bold_and_comparison_colors(self):
+        stub = self.run_app()
+        self.assertGreaterEqual(len(stub.grids), 6)
+        for df, kwargs in stub.grids:
+            css = kwargs['custom_css']
+            self.assertIn('center !important', css['.ag-header .ag-header-cell-label']['justify-content'])
+            self.assertIn('750', css['.ag-header .ag-header-cell-text']['font-weight'])
+            options = kwargs['gridOptions']
+            self.assertTrue(all(col['headerClass'] == 'lr-center-header' for col in options['columnDefs']))
+        ranked = [(df,kw) for df,kw in stub.grids if 'Sales Change' in df.columns and 'Restaurant' in df.columns]
+        self.assertEqual(len(ranked), 1)
+        ranked_columns = {c['field']:c for c in ranked[0][1]['gridOptions']['columnDefs']}
+        self.assertIn('javascript', ranked_columns['Sales Change']['cellStyle'])
+        self.assertIn('javascript', ranked_columns['Transaction Change']['cellStyle'])
+        self.assertTrue(any('Selected period' in t for t in stub.markdown_texts))
+        self.assertTrue(any('of sales' in t for t in stub.markdown_texts))
+        self.assertFalse(any('These are measurable changes and investigative prompts' in t for t in stub.captions))
+
+    def test_chart_text_colors(self):
+        stub=self.run_app()
+        for figure in stub.chart_traces:
+            for axis in ('xaxis','yaxis'):
+                if axis in figure['layout']:
+                    self.assertEqual(figure['layout'][axis]['tickfont']['color'],'#081043')
+                    self.assertEqual(figure['layout'][axis]['title']['font']['color'],'#081043')
 
     def test_previous_period(self):
         stub=self.run_app(comparison='Previous Equivalent Period')
