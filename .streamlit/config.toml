@@ -1,0 +1,24 @@
+# Match Brand Rundown's light-first Shelf Life theme.
+[server]
+headless = true
+maxUploadSize = 25
+
+[theme]
+base = "light"
+font = "sans serif"
+
+[theme.light]
+primaryColor = "#0032FF"
+backgroundColor = "#FAF8F3"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#081043"
+dataframeHeaderBackgroundColor = "#EAF0FF"
+dataframeHeaderTextColor = "#081043"
+
+[theme.dark]
+primaryColor = "#8EA3FF"
+backgroundColor = "#0A1030"
+secondaryBackgroundColor = "#141E43"
+textColor = "#F7F6F0"
+dataframeHeaderBackgroundColor = "#253043"
+dataframeHeaderTextColor = "#F9FAFB"
