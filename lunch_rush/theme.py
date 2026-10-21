@@ -183,6 +183,18 @@ div[data-testid="stMetricValue"] {
 .st-key-lr_drive_card [data-testid="stMetric"],
 .st-key-lr_other_card [data-testid="stMetric"] {box-shadow:none;}
 div[data-testid="stExpander"] {border-color:var(--br-border);border-radius:.8rem;}
+/* Sidebar disclosure controls should be outlined white, as in Shelf Life. */
+section[data-testid="stSidebar"] [data-testid="stExpander"] {
+    border:1.5px solid rgba(255,255,255,.9) !important;
+    border-radius:.65rem !important;
+}
+section[data-testid="stSidebar"] [data-testid="stExpander"]:hover {
+    border-color:#FFFFFF !important;
+    background:rgba(255,255,255,.08);
+}
+section[data-testid="stSidebar"] [data-testid="stExpander"] summary:focus-visible {
+    outline:2px solid #FFFFFF !important; outline-offset:2px;
+}
 /* All sidebar actions need legible white text against the blue surface.
    Select dropdowns and cream upload panels retain their dark text. */
 section[data-testid="stSidebar"] [data-testid="stExpander"] summary,
@@ -220,6 +232,11 @@ section[data-testid="stSidebar"] [data-testid="stFileUploader"] {color:var(--br-
 .lr-chart-key-dot {
     display:inline-block;width:.7rem;height:.7rem;min-width:.7rem;
     border-radius:50%;border:1px solid rgba(8,16,67,.1);
+}
+/* Native table fallback styling: dark text and headers without changing cell geometry. */
+[data-testid="stDataFrame"] [role="columnheader"] {
+    color: #000000 !important; font-weight: 800 !important;
+    text-align: center !important;
 }
 /* Prevent Plotly/AG Grid cards from inheriting muted content colors. */
 .st-key-br_chart_comparison,.st-key-br_chart_contribution,

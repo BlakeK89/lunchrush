@@ -25,7 +25,9 @@ class FakeStreamlit(ModuleType):
         self.tables, self.downloads = [], []
         self.captions, self.markdown_texts, self.info_texts, self.chart_traces = [], [], [], []
         self.tabs_created = []
+        self.subheaders = []
         self.warnings = []
+        self.expanders = []
 
     def __enter__(self): return self
     def __exit__(self,*_): return False
@@ -38,6 +40,8 @@ class FakeStreamlit(ModuleType):
     def download_button(self,label,data,**kwargs):
         self.downloads.append((label,data,kwargs));return False
     def columns(self,n,**kwargs): return [self for _ in range(n if isinstance(n,int) else len(n))]
+    def subheader(self,label,*args,**kwargs):
+        self.subheaders.append(str(label))
     def tabs(self,names):
         self.tabs_created = list(names);return [self for _ in names]
     def selectbox(self,label,options,index=0,**kwargs):
@@ -51,7 +55,8 @@ class FakeStreamlit(ModuleType):
     def plotly_chart(self,figure,*args,**kwargs):
         self.figures+=1;self.chart_traces.append(figure.to_dict())
     def dataframe(self,styled,*args,**kwargs): self.tables.append((styled,kwargs))
-    def expander(self,*args,**kwargs): return self
+    def expander(self,label,*args,**kwargs):
+        self.expanders.append(str(label));return self
     def container(self,*args,**kwargs): return self
     def warning(self,text,*args,**kwargs):self.warnings.append(str(text))
     def stop(self):raise AssertionError('Unexpected st.stop()')
@@ -75,7 +80,7 @@ class TestAppFlows(unittest.TestCase):
 
     def test_all_tabs_tables_and_charts_render(self):
         st=self.run_app()
-        self.assertEqual(st.tabs_created,['Overview','Restaurants','Channels & Dayparts','Menu Performance','Insights'])
+        self.assertEqual(st.tabs_created,['Overview','Restaurants','Channels & Dayparts','Menu Performance'])
         self.assertGreaterEqual(st.figures,5)
         self.assertGreaterEqual(len(st.tables),6)
         self.assertGreaterEqual(st.metrics,11)
@@ -119,11 +124,40 @@ class TestAppFlows(unittest.TestCase):
         self.assertIn('Worth investigating: Orders at established restaurants fell',body)
         self.assertIn('What to check:',body)
         self.assertIn('Menu-item growth compares',body)
-        self.assertIn('Item to review:',body)
-        self.assertIn('where the numbers changed',body)
+        self.assertIn('Menu Items to Review',body)
+        self.assertIn('Data quality and reporting details', ' '.join(st.expanders))
         ex=[df.data for df,k in st.tables if k.get('key')=='lr-restaurant-exclusions']
         self.assertEqual(len(ex),1)
         self.assertTrue(any('open 3 of 7 days' in x for x in ex[0]['Reason']))
+
+    def test_insights_routed_to_relevant_tabs(self):
+        st=self.run_app()
+        body=' '.join(st.markdown_texts + st.info_texts)
+        self.assertNotIn('Insights',st.tabs_created)
+        self.assertIn('Regional Trends to Review',st.subheaders)
+        self.assertIn('Menu Items to Review',body)
+        self.assertIn('What to check:',body)
+        self.assertIn('Data quality and reporting details',st.expanders)
+        self.assertIn('Spicy Crispy Sandwich',body)
+        self.assertIn('Midwest',body)
+        self.assertIn('West',body)
+        self.assertIn('Ordering-channel changes worth reviewing',body)
+
+    def test_sidebar_borders_and_dark_table_text(self):
+        from pathlib import Path
+        theme=(ROOT/'lunch_rush/theme.py').read_text()
+        self.assertIn('stSidebar"] [data-testid="stExpander"] {',theme)
+        self.assertIn('border:1.5px solid rgba(255,255,255,.9) !important',theme)
+        st=self.run_app()
+        tables={kw['key']:styled for styled,kw in st.tables}
+        self.assertIn('lr-restaurant-rankings',tables)
+        self.assertIn('lr-menu-items',tables)
+        self.assertIn('lr-data-quality',tables)
+        for key in ('lr-restaurant-rankings','lr-menu-items'):
+            table=tables[key]
+            self.assertTrue(bool(table.table_styles))
+            self.assertIn('#081043', table.to_html())
+            self.assertIn('font-weight: 800', table.to_html())
 
     def test_sample_zip_roundtrip_and_exports(self):
         import json
@@ -150,13 +184,13 @@ class TestAppFlows(unittest.TestCase):
     def test_previous_and_no_comparison(self):
         for c in ('Previous Equivalent Period','No Comparison'):
             st=self.run_app(comparison=c)
-            self.assertEqual(len(st.tabs_created),5)
+            self.assertEqual(len(st.tabs_created),4)
             self.assertGreater(st.figures,3)
 
     def test_custom_and_ytd(self):
         for period in ('Custom Date Range','Year to Date (YTD)'):
             st=self.run_app(period=period)
-            self.assertEqual(len(st.tabs_created),5)
+            self.assertEqual(len(st.tabs_created),4)
 
 
 class TestNativeStyling(unittest.TestCase):

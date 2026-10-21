@@ -76,8 +76,25 @@ def prepare_table(frame, *, key, formats=None, change_columns=()):
     style = frame.style
     formats = formats or {}
     applied = {name: _format_value(kind) for name, kind in formats.items() if name in frame}
+    # Streamlit otherwise mutes pinned identifiers and missing values in some
+    # themes. Style all displayed cells explicitly while keeping numeric source
+    # data unchanged for sorting and CSV downloads.
+    style = style.format(na_rep='—')
     if applied:
         style = style.format(applied, na_rep='—')
+    style = style.set_properties(**{'color': '#081043',
+                                   'text-align': 'center',
+                                   'font-weight': '500'})
+    prominent = [c for c in ('Restaurant', 'Item', 'Category', 'Segment', 'Check')
+                 if c in frame.columns]
+    if prominent:
+        style = style.set_properties(subset=prominent,
+                                     **{'color': '#000000', 'font-weight': '650'})
+    style = style.set_table_styles([
+        {'selector': 'th', 'props': [('color', '#000000'),
+                                     ('font-weight', '800'),
+                                     ('text-align', 'center')]},
+    ])
     for name in change_columns:
         if name in frame:
             style = style.map(_change_style, subset=[name])

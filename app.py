@@ -398,10 +398,25 @@ def insight_name(d):
     return d['scope']
 
 
-def insight_items(items):
-    for d in items:
-        st.markdown('**' + escape(insight_name(d)) + ':** ' + safe_md(d['finding']))
-        st.markdown('- ' + safe_md(d['investigate']))
+def findings_for_tab(tab: str) -> list[dict]:
+    """Route every diagnostic to a relevant tab without dropping future kinds."""
+    destination = {
+        'traffic_check_divergence': 'overview',
+        'regional_traffic_decline': 'restaurants',
+        'menu_item_decline': 'menu',
+    }
+    return [item for item in findings
+            if destination.get(item['kind'], 'overview') == tab]
+
+
+def render_finding_cards(items: list[dict]) -> None:
+    """Show the original diagnostic evidence and investigation in context."""
+    for item in items:
+        title, evidence, next_step = _insight_text(item)
+        with st.container(border=True):
+            st.markdown(f'**{escape(title)}**')
+            st.markdown(safe_md(evidence))
+            st.markdown('**What to check:** ' + safe_md(next_step))
 
 
 def overview_summary():
@@ -445,25 +460,25 @@ def overview_summary():
                 for r in sorted(regional, key=lambda item: -abs(item['sales_delta_usd']))[:3]:
                     sign = '+' if r['sales_delta_usd']>=0 else '−'
                     st.markdown(f'- **{escape(r["region"])}:** {safe_md(sign + format_money(abs(r["sales_delta_usd"]), compact=True))}')
-            st.markdown('**Priority next checks**')
-            if findings:
-                for d in findings[:3]:
-                    st.markdown(f'- **{escape(insight_name(d))}:** {safe_md(d["investigate"])}')
-            else:
-                st.caption('No diagnostic thresholds triggered. This does not prove every location is healthy.')
-            with st.expander('See more results and next steps'):
-                if same is not None:
-                    st.markdown('**Comparable-store performance**')
-                    st.markdown(f'- Matched locations: **{same["eligible_restaurants"]}**; '
+            overview_findings = findings_for_tab('overview')
+            if overview_findings:
+                st.markdown('**What to check next**')
+                # Avoid repeating the existing headline about established stores.
+                for item in overview_findings:
+                    title, evidence, next_step = _insight_text(item)
+                    st.markdown(f'- **{escape(title)}:** {safe_md(next_step)}')
+                with st.expander('Evidence behind these findings'):
+                    for item in overview_findings:
+                        title, evidence, _ = _insight_text(item)
+                        st.markdown(f'**{escape(title)}:** {safe_md(evidence)}')
+            if findings_for_tab('restaurants') or findings_for_tab('menu'):
+                st.caption('Regional findings appear in Restaurants; menu-item findings appear in Menu Performance.')
+            if same is not None:
+                with st.expander('How established restaurants compare'):
+                    st.markdown(f'- Restaurants compared: **{same["eligible_restaurants"]}**; '
                                 f'excluded: **{same["excluded_restaurants"]}**')
-                    st.markdown(f'- Comparable sales: **{format_pct(same["comparable_store_sales_growth_pct"])}**; '
-                                f'transactions: **{format_pct(same["comparable_store_transaction_growth_pct"])}**')
-                if len(findings)>3:
-                    st.markdown('**Additional observations**')
-                    insight_items(findings[3:])
-                elif not findings:
-                    st.caption('Explore Restaurants, Channels & Dayparts, and Menu Performance for more detail.')
-                # Detailed findings and limits are explained on the Insights tab.
+                    st.markdown(f'- Sales change: **{format_pct(same["comparable_store_sales_growth_pct"])}**; '
+                                f'orders change: **{format_pct(same["comparable_store_transaction_growth_pct"])}**')
 
 
 def chart_key(items: list[tuple[str, str]]) -> None:
@@ -591,6 +606,7 @@ def overview():
                       delta_percent(other_sales,other_prev) if current['complete'] else None,
                       help='Dine-in, pickup, and delivery combined.')
     st.caption('Drive-thru and other ordering channels sum to total net sales.')
+    reporting_details()
 
 
 def restaurants():
@@ -657,6 +673,10 @@ def restaurants():
             fig.update_xaxes(title='Net sales',tickprefix='$',tickformat='~s')
             fig.update_yaxes(title=None,showgrid=False)
             render_chart(fig)
+    regional_findings = findings_for_tab('restaurants')
+    if regional_findings:
+        st.subheader('Regional Trends to Review', anchor=False)
+        render_finding_cards(regional_findings)
     st.subheader('Restaurant Sales and Growth',anchor=False)
     table=pd.DataFrame([{
         'Rank':r['rank'],'Restaurant':display_name(a,r['restaurant_id']),
@@ -727,6 +747,20 @@ def channels_dayparts():
                         widths={'Segment':135,'Net Sales':145,'Sales Mix':110,
                                 'Transactions':140,'Average Check':135,
                                 'Sales Change':145,'Transaction Change':170})
+        if field == 'channel' and mode != 'none':
+            comparable = [r for r in rows if r['Sales Change'] is not None]
+            if comparable:
+                strongest_gain = max(comparable, key=lambda r: r['Sales Change'])
+                strongest_drop = min(comparable, key=lambda r: r['Sales Change'])
+                if strongest_drop['Sales Change'] < 0 or strongest_gain['Sales Change'] > 0:
+                    st.markdown('**Ordering-channel changes worth reviewing**')
+                    if strongest_drop['Sales Change'] < 0:
+                        st.markdown(f'- **{escape(strongest_drop["Segment"])}:** Net sales fell '
+                                    f'{abs(strongest_drop["Sales Change"]):.1f}% compared with {comparison_short_label.lower()}.')
+                    if strongest_gain['Sales Change'] > 0:
+                        st.markdown(f'- **{escape(strongest_gain["Segment"])}:** Net sales rose '
+                                    f'{strongest_gain["Sales Change"]:.1f}% compared with {comparison_short_label.lower()}.')
+                    st.caption('Check whether changes reflect order volume, average check, or customers switching ordering channels. These results do not establish a cause.')
         if field == 'daypart':
             st.caption('Channel and daypart are different views of the same sales; do not add them together.')
 
@@ -773,13 +807,11 @@ def menu_performance():
         widths={'Category':145,'Net Sales':160,'Sales Mix':120,'Units':130})
     st.subheader('Menu-Item Performance',anchor=False)
     matched=matched_menu_growth(a,start,end,ids,mode)
-    # Optional data-derived finding. No assertion about why the item declined.
     if mode != 'none':
-        declines = [(value, a.menu[item_id]['menu_item_name'])
-                    for item_id, value in matched.items() if value is not None and value < -0.2]
-        if declines:
-            decline, item_name = min(declines)
-            st.info(f'Item to review: {item_name} sales fell {format_pct(abs(decline), signed=False)} at comparable restaurants. Check availability, pricing, or menu changes.')
+        menu_findings = findings_for_tab('menu')
+        if menu_findings:
+            st.markdown('**Menu Items to Review**')
+            render_finding_cards(menu_findings)
         st.caption('Menu-item growth compares sales at the same established restaurants in both time periods.')
     rows=pd.DataFrame([{'Item':r['menu_item_name'],'Category':r['category'],
         'Net Sales':r['net_sales_usd'],'Units':r['units_sold'],
@@ -808,7 +840,7 @@ def _insight_text(item):
     if kind == 'traffic_check_divergence':
         return ('Established restaurants: Fewer orders',
                 f'Orders fell {format_pct(abs(ev["transaction_growth_pct"]), signed=False)} '
-                f'while sales increased {format_pct(ev["sales_growth_pct"])} at '
+                f'while sales increased {format_pct(ev["sales_growth_pct"], signed=False)} at '
                 f'{ev["eligible_restaurants"]} comparable restaurants.',
                 'Look at average check, menu prices, promotions and ordering channels.')
     if kind == 'regional_traffic_decline':
@@ -819,34 +851,22 @@ def _insight_text(item):
     if kind == 'menu_item_decline':
         return (f'{insight_name(item)}: Item sales declined',
                 f'Item sales fell {format_pct(abs(ev["net_sales_growth_pct"]), signed=False)} '
-                'at the same restaurants compared with last year.',
+                f'at the same restaurants versus {comparison_short_label.lower()}.',
                 'Check product availability, menu placement, pricing and possible substitutions.')
     return (insight_name(item), item['finding'], item['investigate'])
 
 
-def insights():
-    st.subheader('What Needs Attention',anchor=False)
-    st.caption('These findings show where the numbers changed. They do not tell us why.')
-    if mode == 'none':
-        st.info('Select a comparison period to see which metrics changed.')
-    elif not findings:
-        st.info('No major changes crossed the dashboard’s alert thresholds. Review the other tabs for details.')
-    else:
-        for item in findings:
-            title, evidence, next_step = _insight_text(item)
-            with st.container(border=True):
-                st.markdown(f'**{escape(title)}**')
-                st.markdown(safe_md(evidence))
-                st.markdown('**What to check:** ' + safe_md(next_step))
-    st.subheader('Data Coverage',anchor=False)
-    sales=a.sales_summary(start,end,restaurant_ids=ids)
-    menu=a.menu_summary(start,end,restaurant_ids=ids)
-    total_sales_weeks = sales['eligible_store_weeks'] + sales['incomplete_store_weeks']
-    total_menu_weeks = menu['eligible_store_weeks'] + menu['incomplete_store_weeks']
-    st.caption(f'Sales records complete for {sales["eligible_store_weeks"]:,} of '
-               f'{total_sales_weeks:,} reported restaurant-weeks; menu records complete for '
-               f'{menu["eligible_store_weeks"]:,} of {total_menu_weeks:,}.')
-    with st.expander('See reporting details and exclusions'):
+def reporting_details():
+    """Keep former Insights data coverage and exclusion reasons on Overview."""
+    with st.expander('Data quality and reporting details'):
+        sales = a.sales_summary(start, end, restaurant_ids=ids)
+        menu = a.menu_summary(start, end, restaurant_ids=ids)
+        total_sales_weeks = sales['eligible_store_weeks'] + sales['incomplete_store_weeks']
+        total_menu_weeks = menu['eligible_store_weeks'] + menu['incomplete_store_weeks']
+        st.markdown(f'**Sales data:** {sales["eligible_store_weeks"]:,} of '
+                    f'{total_sales_weeks:,} reported restaurant-weeks complete. '
+                    f'**Menu data:** {menu["eligible_store_weeks"]:,} of '
+                    f'{total_menu_weeks:,} complete.')
         render_grid(pd.DataFrame([
             {'Check':'Sales records','Complete Store-Weeks':sales['eligible_store_weeks'],
              'Incomplete Store-Weeks':sales['incomplete_store_weeks'],
@@ -859,30 +879,36 @@ def insights():
             widths={'Check':170,'Complete Store-Weeks':210,
                     'Incomplete Store-Weeks':220,'Status':130})
         if same is not None:
-            st.caption(f'Same-store comparison: {same["eligible_restaurants"]} eligible '
-                       f'restaurants and {same["excluded_restaurants"]} excluded.')
+            st.markdown(f'**Same-store comparison:** {same["eligible_restaurants"]} '
+                        f'restaurants included, {same["excluded_restaurants"]} excluded.')
             if same['exclusions_by_reason']:
-                st.markdown('**Why some restaurants are excluded**')
+                st.markdown('**Why some restaurants were excluded**')
                 labels = {
                     'not_open': 'Not open for the full comparison period',
                     'incomplete': 'Missing or incomplete weekly sales records',
                     'disrupted': 'At least one disrupted operating week',
+                    'coverage_or_disruption': 'Incomplete reporting or disrupted operations',
+                    'younger_than_13_months': 'Restaurant had not been open long enough for the comparison',
                 }
                 for reason, count in same['exclusions_by_reason'].items():
-                    plain = labels.get(reason, reason.replace('_',' ').capitalize())
-                    st.markdown(f'- {escape(plain)}: **{count}**')
-    if valid.warnings:
-        with st.expander('Data source notes'):
+                    st.markdown(f'- {escape(labels.get(reason, reason.replace("_", " ").capitalize()))}: **{count}**')
+        if valid.warnings:
+            st.markdown('**Data source notes**')
             for warning in valid.warnings:
-                st.caption('• ' + warning)
+                if warning.startswith('Promotions_Weekly'):
+                    note = 'Promotional performance data was not supplied.'
+                elif warning.startswith('Financials_Weekly'):
+                    note = 'Restaurant financial data was not supplied.'
+                else:
+                    note = warning
+                st.markdown('- ' + safe_md(note))
 
 
-tab_overview, tab_locations, tab_channels, tab_menu, tab_insights = st.tabs([
-    'Overview','Restaurants','Channels & Dayparts','Menu Performance','Insights',
+tab_overview, tab_locations, tab_channels, tab_menu = st.tabs([
+    'Overview', 'Restaurants', 'Channels & Dayparts', 'Menu Performance',
 ])
-with tab_overview:overview()
-with tab_locations:restaurants()
-with tab_channels:channels_dayparts()
-with tab_menu:menu_performance()
-with tab_insights:insights()
+with tab_overview: overview()
+with tab_locations: restaurants()
+with tab_channels: channels_dayparts()
+with tab_menu: menu_performance()
 
