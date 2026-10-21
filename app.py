@@ -300,19 +300,26 @@ def date_range(first: date, last: date) -> str:
     return f'{left} – {last:%b} {last.day}, {last.year}'
 
 
+# Reuse Shelf Life's three-column reporting context without overlong copy.
+comparison_short_label = {
+    'yoy': 'Same Period Last Year',
+    'previous': 'Previous Equivalent Period',
+    'none': 'No Comparison',
+}[mode]
 with st.container(border=True, key='br_reporting_context'):
     c1, c2, c3 = st.columns([1.1, 1.25, 1.25], gap='medium')
     with c1:
-        st.caption('Restaurant Brand' if is_demo else 'Restaurant Network')
-        if is_demo:
-            st.markdown('**The Chicken Coop**')
-        st.caption(f'{len(ids)} of {len(a.restaurants)} locations · {period_option} · {compare_label}')
+        st.caption('Brand')
+        st.markdown('**The Chicken Coop**' if is_demo else '**Uploaded Restaurant Data**')
+        st.caption(f'{period_option} · {comparison_short_label}')
     with c2:
         st.caption('Selected Reporting Period')
         st.markdown(f'**{date_range(start, end)}**')
     with c3:
-        st.caption(compare_label)
+        st.caption(comparison_short_label)
         st.markdown(f'**{date_range(prior_start, prior_end)}**' if prior_start else '**Current period only**')
+if len(ids) != len(a.restaurants):
+    st.caption(f'{len(ids)} of {len(a.restaurants)} restaurants selected by filters.')
 if not is_demo:
     st.caption('Uploaded dataset · results reflect only the files supplied')
 
@@ -597,7 +604,8 @@ def restaurants():
                                 'Transaction Change':percentage_column('Transaction Change')})
     st.download_button('Download Restaurant Table (CSV)',table.to_csv(index=False).encode('utf-8'),
                        file_name='lunch_rush_restaurants.csv',mime='text/csv')
-    if mode!='none':st.caption('Growth is per-location all-store growth, not comparable-chain growth.')
+    if mode != 'none':
+        st.caption('Each restaurant’s sales growth compares its sales with the selected comparison period. This is different from comparable-store sales growth.')
 
 
 def channels_dayparts():
