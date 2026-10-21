@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class FakeStreamlit(ModuleType):
-    def __init__(self, *, comparison='Same Period Last Year (YoY)', period='Last 13 Weeks (L13W)'):
+    def __init__(self, *, comparison='Same Period Last Year (YoY)', period='Last 13 Weeks (L13W)', selections=None, group='Restaurant'):
         super().__init__('streamlit')
         self.sidebar = self
         self.column_config = SimpleNamespace(
@@ -21,7 +21,9 @@ class FakeStreamlit(ModuleType):
         )
         self.session_state = {}
         self.comparison, self.period = comparison, period
+        self.selections, self.group = selections or {}, group
         self.figures, self.metrics = 0, 0
+        self.metric_values = []
         self.tables, self.downloads = [], []
         self.captions, self.markdown_texts, self.info_texts, self.chart_traces = [], [], [], []
         self.tabs_created = []
@@ -47,11 +49,15 @@ class FakeStreamlit(ModuleType):
     def selectbox(self,label,options,index=0,**kwargs):
         if label=='Reporting Period': return self.period
         if label=='Compare Against': return self.comparison
+        if label=='Group rows by': return self.group
         return options[index]
     def radio(self,label,options,index=0,**kwargs): return options[index]
-    def multiselect(self,*args,**kwargs): return []
+    def multiselect(self,label,*args,**kwargs):
+        return list(self.selections.get(label, kwargs.get('default', [])))
     def date_input(self,*args,**kwargs): return kwargs['value']
-    def metric(self,*args,**kwargs): self.metrics+=1
+    def metric(self,*args,**kwargs):
+        self.metrics+=1
+        self.metric_values.append(args)
     def plotly_chart(self,figure,*args,**kwargs):
         self.figures+=1;self.chart_traces.append(figure.to_dict())
     def dataframe(self,styled,*args,**kwargs): self.tables.append((styled,kwargs))
@@ -107,11 +113,11 @@ class TestAppFlows(unittest.TestCase):
             self.assertTrue(all(len(re.findall(r'<td\b', row))==len(headers) for row in rows))
             if 'data-missing="1"' in markup:
                 self.assertIn('>—</td>',markup)
-        restaurant=[html for html,_ in st.tables if 'id="lr-html-lr-restaurant-rankings"' in html]
+        restaurant=[html for html,_ in st.tables if 'id="lr-html-lr-restaurant-explorer"' in html]
         self.assertEqual(len(restaurant),1)
         restaurant_headers=re.findall(r'<th\b[^>]*>.*?</th>',restaurant[0],re.S)
-        labels=[unescape(re.search(r'<span>(.*?)</span>',h).group(1)) for h in restaurant_headers]
-        self.assertEqual(labels[:4],['Rank','Restaurant','Net Sales','Sales Change'])
+        labels=[unescape(re.search(r'<span[^>]*>(.*?)</span>',h).group(1)) for h in restaurant_headers]
+        self.assertEqual(labels[:4],['Restaurant','Rank','Region','Net Sales'])
         self.assertIn('lr-pinned',restaurant[0]);self.assertIn('data-kind="number"',restaurant[0])
         item=[html for html,_ in st.tables if 'id="lr-html-lr-menu-items"' in html]
         self.assertEqual(len(item),1)
@@ -139,7 +145,7 @@ class TestAppFlows(unittest.TestCase):
         st=self.run_app()
         body=' '.join(st.markdown_texts+' '.join(st.captions).splitlines()+st.info_texts)
         self.assertIn('Worth investigating: Orders at established restaurants fell',body)
-        self.assertIn('What to check:',body)
+        self.assertIn('Next check:',body)
         self.assertIn('Menu-item growth compares',body)
         self.assertIn('Menu Items to Review',body)
         self.assertIn('Data quality and reporting details', ' '.join(st.expanders))
@@ -153,7 +159,7 @@ class TestAppFlows(unittest.TestCase):
         self.assertNotIn('Insights',st.tabs_created)
         self.assertIn('Regional Trends to Review',st.subheaders)
         self.assertIn('Menu Items to Review',body)
-        self.assertIn('What to check:',body)
+        self.assertIn('Next check:',body)
         self.assertIn('Data quality and reporting details',st.expanders)
         self.assertIn('Spicy Crispy Sandwich',body)
         self.assertIn('Midwest',body)
@@ -166,13 +172,32 @@ class TestAppFlows(unittest.TestCase):
         self.assertIn('border:1.5px solid rgba(255,255,255,.9) !important',theme)
         st=self.run_app()
         tables={key:next(markup for markup,_ in st.tables if f'id="lr-html-{key}"' in markup)
-                for key in ('lr-restaurant-rankings','lr-menu-items','lr-data-quality')}
-        for key in ('lr-restaurant-rankings','lr-menu-items'):
+                for key in ('lr-restaurant-explorer','lr-menu-items','lr-data-quality')}
+        for key in ('lr-restaurant-explorer','lr-menu-items'):
             table=tables[key]
             self.assertIn('color:#081043',table)
             self.assertIn('font-weight:800',table)
             self.assertIn('color:#000 !important',table)
             self.assertIn('background:#EAF0FF',table)
+
+    def test_specific_restaurants_regions_and_metrics_do_not_modify_brand_kpis(self):
+        import csv, io
+        overall = self.run_app()
+        custom = self.run_app(selections={
+            'Regions': ['WEST'], 'Restaurants': ['R001', 'R002'],
+            'Metrics to display': ['Net Sales', 'Transactions'],
+        }, group='Region → Restaurant')
+        self.assertEqual(overall.metric_values[:5], custom.metric_values[:5])
+        self.assertTrue(any('2 of 40 dashboard-selected' in caption for caption in custom.captions))
+        output = next(data for label, data, _ in custom.downloads
+                      if 'Restaurant Comparison' in label)
+        rows = list(csv.DictReader(io.StringIO(output.decode('utf-8'))))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual({r['Restaurant'] for r in rows}, {'Costa Mesa (R001)', 'Santa Ana (R002)'})
+        self.assertEqual({r['Region'] for r in rows}, {'West'})
+        self.assertTrue(all('Net Sales' in r and 'Transactions' in r for r in rows))
+        self.assertTrue(all('Sales Change' not in r for r in rows))
+        self.assertTrue(all('Reporting' in r for r in rows))
 
     def test_sample_zip_roundtrip_and_exports(self):
         import json
@@ -186,7 +211,7 @@ class TestAppFlows(unittest.TestCase):
         validated=validate(parse_upload(meta['file_name'],data,schema),schema)
         self.assertEqual(validated.errors,[])
         self.assertEqual(len(validated.tables['Restaurant_Master']),40)
-        self.assertTrue(any('Restaurant Table' in name for name,_,_ in st.downloads))
+        self.assertTrue(any('Restaurant Comparison' in name for name,_,_ in st.downloads))
         self.assertTrue(any('Menu Table' in name for name,_,_ in st.downloads))
 
     def test_legends_and_pie_hover_fonts(self):

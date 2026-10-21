@@ -20,6 +20,12 @@ import streamlit as st
 
 from lunch_rush.engine import Analytics, validate
 from lunch_rush.grids import render_grid
+from lunch_rush.restaurant_explorer import (
+    CHANGE_COLUMNS as EXPLORER_CHANGES, DEFAULT_METRICS as EXPLORER_DEFAULTS,
+    FORMATS as EXPLORER_FORMATS, GROUPS as EXPLORER_GROUPS,
+    METRICS as EXPLORER_METRICS, WIDTHS as EXPLORER_WIDTHS,
+    comparison_frame, scoped_restaurants,
+)
 from lunch_rush.io import load_csv_tabs
 from lunch_rush.theme import ELECTRIC_BLUE as BLUE, CORAL, NAVY, LUNCH_GREEN as GREEN, STYLES
 from lunch_rush.ui_metrics import (
@@ -176,7 +182,7 @@ with st.container(key='br_identity_header'):
 
 if st.session_state.get('lr_show_help', False):
     st.subheader('How Lunch Rush Works', anchor=False)
-    st.markdown('Select the fictional demo or upload a workbook, choose your reporting period, then explore the five dashboard tabs.')
+    st.markdown('Select the fictional demo or upload a workbook, choose your reporting period, then explore the four dashboard tabs.')
     with st.container(border=True):
         st.markdown('**Key restaurant metrics**')
         st.markdown('''
@@ -416,7 +422,7 @@ def render_finding_cards(items: list[dict]) -> None:
         with st.container(border=True):
             st.markdown(f'**{escape(title)}**')
             st.markdown(safe_md(evidence))
-            st.markdown('**What to check:** ' + safe_md(next_step))
+            st.markdown('**Next check:** ' + safe_md(next_step))
 
 
 def overview_summary():
@@ -466,11 +472,11 @@ def overview_summary():
                 # Avoid repeating the existing headline about established stores.
                 for item in overview_findings:
                     title, evidence, next_step = _insight_text(item)
-                    st.markdown(f'- **{escape(title)}:** {safe_md(next_step)}')
+                    st.markdown(f'- {escape(title)}. {safe_md(next_step)}')
                 with st.expander('Evidence behind these findings'):
                     for item in overview_findings:
                         title, evidence, _ = _insight_text(item)
-                        st.markdown(f'**{escape(title)}:** {safe_md(evidence)}')
+                        st.markdown(safe_md(evidence))
             if findings_for_tab('restaurants') or findings_for_tab('menu'):
                 st.caption('Regional findings appear in Restaurants; menu-item findings appear in Menu Performance.')
             if same is not None:
@@ -652,7 +658,9 @@ def restaurants():
             } for rid, reason in sorted(excluded.items())]),
                 key='lr-restaurant-exclusions', widths={'Restaurant':165, 'Reason':530})
     if not active:
-        st.info('No restaurants qualify for a full-period ranking.');return
+        st.info('No restaurants qualify for a full-period ranking. The comparison below still includes selected locations, with reporting limitations flagged.')
+        restaurant_comparison_builder(active)
+        return
     left,right = st.columns([1.1,1],gap='medium')
     with left:
         with st.container(key='lr_chart_restaurants_top'):
@@ -677,29 +685,79 @@ def restaurants():
     if regional_findings:
         st.subheader('Regional Trends to Review', anchor=False)
         render_finding_cards(regional_findings)
-    st.subheader('Restaurant Sales and Growth',anchor=False)
-    table=pd.DataFrame([{
-        'Rank':r['rank'],'Restaurant':display_name(a,r['restaurant_id']),
-        'Region':r['region'],'Ownership':r['ownership_type'],'Format':r['restaurant_format'],
-        'Net Sales':r['net_sales_usd'],
-        'Transactions':r['transactions'],
-        'Average Check':r['average_check_usd'],
-        'Sales Change':pct_points(r['sales_growth_pct']) if mode!='none' else None,
-        'Transaction Change':pct_points(r['transaction_growth_pct']) if mode!='none' else None,
-    } for r in active])
-    render_grid(table, key='lr-restaurant-rankings', height=470,
-                formats={'Rank':'count', 'Net Sales':'money', 'Transactions':'count',
-                         'Average Check':'price', 'Sales Change':'growth',
-                         'Transaction Change':'growth'},
-                change_columns=('Sales Change','Transaction Change'),
-                widths={'Restaurant':175, 'Region':110, 'Ownership':115,
-                        'Format':140, 'Net Sales':140, 'Transactions':125,
-                        'Average Check':135, 'Sales Change':130,
-                        'Transaction Change':170})
-    st.download_button('Download Restaurant Table (CSV)',table.to_csv(index=False).encode('utf-8'),
-                       file_name='lunch_rush_restaurants.csv',mime='text/csv')
-    if mode != 'none':
-        st.caption('Each row shows how that restaurant performed against the selected comparison period. The same-store result above includes only established restaurants with complete data in both periods.')
+    restaurant_comparison_builder(active)
+
+
+def _valid_explorer_selections(key: str, options: list[str]) -> None:
+    """Avoid stale selections when global filters or an upload changes."""
+    if key in st.session_state:
+        allowed = set(options)
+        st.session_state[key] = [value for value in st.session_state[key]
+                                 if value in allowed]
+
+
+def _reset_restaurant_comparison():
+    for key in ('lr_explore_regions', 'lr_explore_restaurants', 'lr_explore_metrics',
+                'lr_explore_group'):
+        st.session_state.pop(key, None)
+
+
+def restaurant_comparison_builder(eligible_ranked: list[dict]) -> None:
+    """A Shelf Life-style, independent region / restaurant comparison table."""
+    st.subheader('Build a Restaurant Comparison', anchor=False)
+    st.caption('Choose any combination of regions and restaurants within the dashboard-wide filters. '
+               'These selections affect only the comparison below, not the KPIs or charts above. '
+               'An empty region or restaurant selection includes all matching locations.')
+    region_options = sorted({a.restaurants[rid]['region_id'] for rid in ids},
+                            key=lambda rid: (regions[rid], rid))
+    _valid_explorer_selections('lr_explore_regions', region_options)
+    chosen_regions = st.multiselect(
+        'Regions', options=region_options, format_func=lambda rid: regions[rid],
+        placeholder='All regions in the dashboard selection', key='lr_explore_regions',
+    )
+    available_ids = scoped_restaurants(a, ids, chosen_regions)
+    _valid_explorer_selections('lr_explore_restaurants', available_ids)
+    chosen_restaurants = st.multiselect(
+        'Restaurants', options=available_ids, format_func=lambda rid: display_name(a, rid),
+        placeholder='All restaurants in selected regions', key='lr_explore_restaurants',
+    )
+    selected = scoped_restaurants(a, ids, chosen_regions, chosen_restaurants)
+    settings1, settings2 = st.columns([1, 1.6], gap='medium')
+    with settings1:
+        group_by = st.selectbox('Group rows by', options=list(EXPLORER_GROUPS),
+                                key='lr_explore_group')
+    with settings2:
+        _valid_explorer_selections('lr_explore_metrics', list(EXPLORER_METRICS))
+        selected_metrics = st.multiselect(
+            'Metrics to display', options=list(EXPLORER_METRICS),
+            default=list(EXPLORER_DEFAULTS), key='lr_explore_metrics',
+            placeholder='Choose metrics',
+        )
+    st.button('Reset Comparison Filters', key='lr_explore_reset',
+              on_click=_reset_restaurant_comparison)
+    if not selected:
+        st.info('No restaurants match this combination. Change your selection.'); return
+    if not selected_metrics:
+        st.info('Select at least one metric to build the comparison.'); return
+    st.caption(f'{len(selected)} of {len(ids)} dashboard-selected restaurants included '
+               f'· {len(set(a.restaurants[rid]["region_id"] for rid in selected))} regions '
+               f'· grouped by {group_by.lower()}.')
+    if group_by == 'Region → Restaurant':
+        st.caption('One row per restaurant, arranged by region. Select Region to see regional totals without double-counting rows.')
+    ranking = {row['restaurant_id']: row['rank'] for row in eligible_ranked}
+    table = comparison_frame(a, start, end, selected, mode, group_by=group_by,
+                             metrics=selected_metrics, rank_by_id=ranking)
+    render_grid(table, key='lr-restaurant-explorer', height=470,
+                formats={c: t for c, t in EXPLORER_FORMATS.items() if c in table},
+                change_columns=tuple(c for c in EXPLORER_CHANGES if c in table),
+                widths=EXPLORER_WIDTHS)
+    st.download_button('Download Restaurant Comparison (CSV)',
+                       table.to_csv(index=False).encode('utf-8'),
+                       file_name='lunch_rush_restaurant_comparison.csv', mime='text/csv')
+    st.caption('Sales and transactions include complete reported weeks only. '
+               'Incomplete or disrupted locations remain visible and are flagged; '
+               'ranking eligibility is stricter. Regional averages are transaction-weighted, '
+               'and regional changes are calculated from combined sales, not averaged percentages.')
 
 
 def channels_dayparts():
@@ -838,18 +896,18 @@ def _insight_text(item):
     kind = item['kind']
     ev = item['evidence']
     if kind == 'traffic_check_divergence':
-        return ('Established restaurants: Fewer orders',
+        return ('Established restaurants are receiving fewer orders',
                 f'Orders fell {format_pct(abs(ev["transaction_growth_pct"]), signed=False)} '
                 f'while sales increased {format_pct(ev["sales_growth_pct"], signed=False)} at '
                 f'{ev["eligible_restaurants"]} comparable restaurants.',
                 'Look at average check, menu prices, promotions and ordering channels.')
     if kind == 'regional_traffic_decline':
-        return (f'{insight_name(item)}: Orders are declining',
+        return (f'Orders are declining in {insight_name(item)}',
                 f'Orders fell {format_pct(abs(ev["transaction_growth_pct"]), signed=False)} '
                 f'at {ev["eligible_restaurants"]} comparable restaurants in the region.',
                 'Review restaurant-level trends, local campaigns and operational changes.')
     if kind == 'menu_item_decline':
-        return (f'{insight_name(item)}: Item sales declined',
+        return (f'Sales declined for {insight_name(item)}',
                 f'Item sales fell {format_pct(abs(ev["net_sales_growth_pct"]), signed=False)} '
                 f'at the same restaurants versus {comparison_short_label.lower()}.',
                 'Check product availability, menu placement, pricing and possible substitutions.')

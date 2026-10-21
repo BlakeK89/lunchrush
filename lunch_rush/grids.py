@@ -120,6 +120,8 @@ def table_html(frame, *, key, formats=None, change_columns=(), widths=None,
     pinned = []
     if key == 'lr-restaurant-rankings' and 'Rank' in frame and 'Restaurant' in frame:
         pinned = ['Rank', 'Restaurant']
+    elif key == 'lr-restaurant-explorer' and frame.columns.tolist():
+        pinned = [c for c in frame.columns[:2] if c in {'Region', 'Restaurant'}]
     elif frame.columns.tolist() and frame.columns[0] in IDENTITY_COLUMNS:
         pinned = [frame.columns[0]]
     left_offsets = {}
@@ -140,13 +142,20 @@ def table_html(frame, *, key, formats=None, change_columns=(), widths=None,
     parts.extend(['</colgroup><thead><tr>'])
     for idx, name in enumerate(frame.columns):
         label = escape(LABELS.get(name, name))
-        pin = f' class="lr-pinned" style="left:{left_offsets[name]}px"' if name in pinned else ''
+        pin = f' class="lr-pinned"' if name in pinned else ''
+        header_inline = ('text-align:center !important; color:#000 !important; '
+                         'vertical-align:middle; background:#EAF0FF; font-weight:800 !important;')
+        if name in pinned:
+            header_inline += f' left:{left_offsets[name]}px;'
         column_type = 'number' if numeric[idx] else 'text'
         parts.append(
-            f'<th scope="col" aria-sort="none" data-kind="{column_type}"{pin}>'
+            f'<th scope="col" aria-sort="none" data-kind="{column_type}"{pin} style="{header_inline}">'
             f'<button type="button" class="lr-sort-button" data-index="{idx}" '
+            'style="display:flex; justify-content:center; align-items:center; '
+            'text-align:center !important; color:#000 !important; font-weight:800 !important;" '
             f'aria-label="Sort by {escape(LABELS.get(name, name), quote=True)}">'
-            f'<span>{label}</span><span class="lr-sort-indicator" aria-hidden="true">↕</span>'
+            f'<span style="text-align:center !important; color:#000 !important;">{label}</span>'
+            '<span class="lr-sort-indicator" aria-hidden="true">↕</span>'
             '</button></th>'
         )
     parts.append('</tr></thead><tbody>')
@@ -178,8 +187,14 @@ def table_html(frame, *, key, formats=None, change_columns=(), widths=None,
             attrs = (f'class="{" ".join(classes)}" '
                      f'data-sort="{escape(sort_value, quote=True)}" '
                      f'data-missing="{int(missing)}"')
+            cell_inline = 'text-align:center !important; vertical-align:middle;'
+            if name in IDENTITY_COLUMNS:
+                cell_inline += ' color:#000 !important; font-weight:700 !important;'
+            elif missing:
+                cell_inline += ' color:#344054 !important; font-weight:650 !important;'
             if name in pinned:
-                attrs += f' style="left:{left_offsets[name]}px"'
+                cell_inline += f' left:{left_offsets[name]}px;'
+            attrs += f' style="{cell_inline}"'
             parts.append(f'<td {attrs}>{escape(display)}</td>')
         parts.append('</tr>')
     parts.append('</tbody></table></div></div>')
