@@ -18,7 +18,10 @@ class FakeStreamlit(ModuleType):
     def __init__(self, *, comparison='Same Period Last Year (YoY)', period='Last 13 Weeks (L13W)'):
         super().__init__('streamlit')
         self.sidebar = self
-        self.column_config = SimpleNamespace(NumberColumn=lambda *args,**kwargs:dict(args=args,kwargs=kwargs))
+        self.column_config = SimpleNamespace(
+            NumberColumn=lambda *args,**kwargs:dict(args=args,kwargs=kwargs),
+            TextColumn=lambda *args,**kwargs:dict(args=args,kwargs=kwargs),
+        )
         self.session_state = {}
         self.comparison, self.period = comparison, period
         self.figures = 0
@@ -30,6 +33,7 @@ class FakeStreamlit(ModuleType):
         self.warnings = []
         self.downloads = []
         self.markdown_texts = []
+        self.captions = []
 
     def __enter__(self):return self
     def __exit__(self,*_):return False
@@ -38,6 +42,7 @@ class FakeStreamlit(ModuleType):
     def download_button(self,label,data,**kwargs):
         self.downloads.append((label,data,kwargs));return False
     def markdown(self,text,*args,**kwargs):self.markdown_texts.append(text)
+    def caption(self,text,*args,**kwargs):self.captions.append(text)
     def set_page_config(self,**kwargs):pass
     def columns(self,widths,**kwargs):return [self for _ in range(widths if isinstance(widths,int) else len(widths))]
     def tabs(self,names):
@@ -116,6 +121,50 @@ class TestAppFlows(unittest.TestCase):
         segments=[(df,kws) for df,kws in money_tables if 'Segment' in df.columns]
         self.assertEqual([len(df) for df,_ in segments],[4,3])
         self.assertEqual([kws['height'] for _,kws in segments],[185,150])
+
+    def test_number_grouping_and_readable_column_widths(self):
+        stub = self.run_app()
+        tables = [(df, kws) for df, kws in stub.dataframes if 'Net Sales' in df.columns]
+        self.assertGreaterEqual(len(tables), 4)
+        for df, kwargs in tables:
+            net_sales = kwargs['column_config']['Net Sales']['kwargs']
+            self.assertEqual(net_sales['format'], '$%,.0f')
+            self.assertGreaterEqual(net_sales['width'], 125)
+            self.assertTrue(df['Net Sales'].dtype.kind in 'fi')
+        channels = [(df,kws) for df,kws in tables if 'Segment' in df.columns]
+        self.assertEqual([len(df) for df,_ in channels], [4,3])
+        for df,kws in channels:
+            configs = kws['column_config']
+            self.assertEqual(configs['Transactions']['kwargs']['format'], '%,d')
+            self.assertEqual(configs['Average Check']['kwargs']['format'], '$%,.2f')
+            self.assertGreaterEqual(configs['Transaction Change']['kwargs']['width'], 150)
+            self.assertEqual(kws['use_container_width'], True)
+
+    def test_plain_english_labels_and_exclusion_reasons(self):
+        stub = self.run_app()
+        captions = ' '.join(map(str, stub.captions))
+        self.assertIn('Same-store comparisons use the same', captions)
+        self.assertIn('Average sales per restaurant over the past year:', captions)
+        self.assertIn('menu-item sales add up', captions)
+        self.assertIn('percentage of orders that included an item', captions)
+        self.assertIn('Menu-item growth compares sales', captions)
+        self.assertIn('Each row shows how that restaurant performed', captions)
+        reasons = [df for df, _ in stub.dataframes if 'Reason' in df.columns]
+        self.assertTrue(reasons)
+        self.assertTrue(all('_' not in reason and len(reason.split()) > 7
+                            for df in reasons for reason in df['Reason']))
+        self.assertTrue(any('open 3 of 7 days' in reason and 'operating disruption recorded' in reason
+                            for df in reasons for reason in df['Reason']))
+
+    def test_pie_chart_hover_text_is_larger(self):
+        stub = self.run_app()
+        pies = [f for f in stub.chart_traces
+                if any(trace.get('type') == 'pie' for trace in f.get('data', []))]
+        self.assertEqual(len(pies), 2)
+        for fig in pies:
+            hover = fig['layout']['hoverlabel']
+            self.assertGreaterEqual(hover['font']['size'], 16)
+            self.assertIn('Net sales:', fig['data'][0]['hovertemplate'])
 
     def test_previous_period(self):
         stub=self.run_app(comparison='Previous Equivalent Period')

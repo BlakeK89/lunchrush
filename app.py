@@ -59,16 +59,19 @@ def pct_points(value):
     return None if value is None else 100 * value
 
 
-def money_column(label: str, *, decimals=0):
-    return st.column_config.NumberColumn(label, format=f'$%.{decimals}f')
+def money_column(label: str, *, decimals=0, width=None):
+    """Format currency with thousands separators, keeping source values numeric."""
+    return st.column_config.NumberColumn(label, format=f'$%,.{decimals}f', width=width)
 
 
-def count_column(label: str):
-    return st.column_config.NumberColumn(label, format='%d')
+def count_column(label: str, *, width=None):
+    return st.column_config.NumberColumn(label, format='%,d', width=width)
 
 
-def percentage_column(label: str, *, signed=True):
-    return st.column_config.NumberColumn(label, format=('%+.1f%%' if signed else '%.1f%%'))
+def percentage_column(label: str, *, signed=True, width=None):
+    return st.column_config.NumberColumn(
+        label, format=('%+.1f%%' if signed else '%.1f%%'), width=width,
+    )
 
 
 def safe_md(s: object) -> str:
@@ -350,9 +353,12 @@ with kpis[4]:
     st.metric('Comparable Transactions', format_pct(same_tx_growth),
               delta=format_pct(same_tx_growth) + ' vs prior' if same_tx_growth is not None else None,
               help='Order-volume change at the same qualifying stores. Not unique guest traffic.')
-st.caption(f'Comparable-store cohort: {same["eligible_restaurants"]} matched locations. ' if same is not None else 'Comparable stores: requires a comparison period. ')
-st.caption(f'Rolling 52-week AUV: {format_money(auv["average_unit_volume_usd"], compact=True)} '
-           f'({auv["eligible_restaurants"]} qualifying locations).')
+if same is not None:
+    st.caption(f'Same-store comparisons use the same {same["eligible_restaurants"]} established restaurants in both periods.')
+else:
+    st.caption('Choose a comparison period to see how established restaurants performed.')
+st.caption(f'Average sales per restaurant over the past year: {format_money(auv["average_unit_volume_usd"], compact=True)} '
+           f'(based on {auv["eligible_restaurants"]} restaurants with a full year of complete data).')
 if comp['reason'] and mode != 'none':
     st.info('All-store comparison unavailable: ' + comp['reason'])
 if not current['complete']:
@@ -562,8 +568,34 @@ def restaurants():
     p3.metric('Excluded from Ranking',len(excluded))
     if excluded:
         with st.expander('Why are some locations excluded?'):
-            st.dataframe(pd.DataFrame([{'Restaurant':display_name(a,rid),'Reason':reason.replace('_',' ')}
-                                       for rid,reason in sorted(excluded.items())]),hide_index=True,use_container_width=True)
+            def exclusion_explanation(restaurant_id, reason):
+                # The ranking engine returns combined codes. Use the original
+                # per-week records to explain the specific observed problem.
+                if reason == 'partial_or_disrupted':
+                    for week in a._weeks(start, end):
+                        status = a.status.get((restaurant_id, week))
+                        if status is None:
+                            continue
+                        details = []
+                        if status['actual_operating_days'] != 7 or status['expected_operating_days'] != 7:
+                            details.append(f"open {status['actual_operating_days']} of 7 days")
+                        if status['coverage_status'] != 'Complete':
+                            details.append('sales reporting incomplete')
+                        if status['disruption_flag']:
+                            details.append('operating disruption recorded')
+                        if details:
+                            return (f'Week ending {week:%b} {week.day}, {week.year}: '
+                                    + '; '.join(details) + '.')
+                    return 'One or more weeks had incomplete sales reporting or disrupted operations.'
+                if reason == 'not_open_or_unreported':
+                    return 'Not open for the entire selected period, or weekly sales data was missing.'
+                return 'Did not meet the requirements for a full-period restaurant ranking.'
+
+            st.dataframe(pd.DataFrame([{
+                'Restaurant': display_name(a, rid),
+                'Reason': exclusion_explanation(rid, reason),
+            } for rid, reason in sorted(excluded.items())]),
+                hide_index=True, use_container_width=True)
     if not active:
         st.info('No restaurants qualify for a full-period ranking.');return
     left,right = st.columns([1.1,1],gap='medium')
@@ -597,15 +629,20 @@ def restaurants():
         'Transaction Change':pct_points(r['transaction_growth_pct']) if mode!='none' else None,
     } for r in active])
     st.dataframe(table,hide_index=True,use_container_width=True,height=460,
-                 column_config={'Net Sales':money_column('Net Sales'),
-                                'Transactions':count_column('Transactions'),
-                                'Average Check':money_column('Average Check',decimals=2),
-                                'Sales Change':percentage_column('Sales Change'),
-                                'Transaction Change':percentage_column('Transaction Change')})
+                 column_config={'Rank':count_column('Rank', width=70),
+                                'Restaurant':st.column_config.TextColumn('Restaurant',width=175),
+                                'Region':st.column_config.TextColumn('Region',width=100),
+                                'Ownership':st.column_config.TextColumn('Ownership',width=100),
+                                'Format':st.column_config.TextColumn('Format',width=120),
+                                'Net Sales':money_column('Net Sales',width=135),
+                                'Transactions':count_column('Transactions',width=115),
+                                'Average Check':money_column('Average Check',decimals=2,width=120),
+                                'Sales Change':percentage_column('Sales Change',width=120),
+                                'Transaction Change':percentage_column('Transaction Change',width=160)})
     st.download_button('Download Restaurant Table (CSV)',table.to_csv(index=False).encode('utf-8'),
                        file_name='lunch_rush_restaurants.csv',mime='text/csv')
     if mode != 'none':
-        st.caption('Each restaurant’s sales growth compares its sales with the selected comparison period. This is different from comparable-store sales growth.')
+        st.caption('Each row shows how that restaurant performed against the selected comparison period. The same-store result above includes only established restaurants with complete data in both periods.')
 
 
 def channels_dayparts():
@@ -615,42 +652,49 @@ def channels_dayparts():
         breakdown=mix_breakdown(a,start,end,ids,by=field)
         if not breakdown or not current['net_sales_usd']:
             st.info('No sales in the selected scope.');continue
-        left,right=st.columns([1,1.3],gap='medium')
-        with left:
-            with st.container(key=f'lr_breakdown_{field}'):
-                st.subheader('Share of Net Sales',anchor=False)
-                fig=go.Figure(go.Pie(labels=[r['name'] for r in breakdown],
-                    values=[r['net_sales_usd'] for r in breakdown],hole=.58,
-                    marker=dict(colors=[BLUE,GREEN,CORAL,'#8190AC','#BCC5D7'][:len(breakdown)]),
-                    textinfo='percent',textposition='inside',insidetextorientation='horizontal',
-                    textfont=dict(size=13,color='#FFFFFF'),
-                    hovertemplate='%{label}<br>$%{value:,.0f}<extra></extra>'))
-                chart_style(fig,height=335)
-                fig.update_layout(showlegend=False)
-                chart_key([(r['name'],color) for r,color in zip(
-                    breakdown,[BLUE,GREEN,CORAL,'#8190AC','#BCC5D7'])])
-                st.plotly_chart(fig,use_container_width=True,config={'displayModeBar':False})
-        with right:
-            rows=[]
-            for r in breakdown:
-                comparison=a.compare_sales(start,end,mode=mode,restaurant_ids=ids,**{field:r['name']})
-                rows.append({'Segment':r['name'],'Net Sales':r['net_sales_usd'],
-                    'Sales Mix':pct_points(r['net_sales_usd']/current['net_sales_usd']),
-                    'Transactions':r['transactions'],
-                    'Average Check':r['average_check_usd'],
-                    'Sales Change':pct_points(comparison['sales_growth_pct']) if mode!='none' else None,
-                    'Transaction Change':pct_points(comparison['transaction_growth_pct']) if mode!='none' else None})
-            with st.container(key=f'lr_table_{field}'):
-                st.dataframe(pd.DataFrame(rows),hide_index=True,use_container_width=True,
-                             height=35*(len(rows)+1)+10,
-                             column_config={'Net Sales':money_column('Net Sales'),
-                                            'Sales Mix':percentage_column('Sales Mix',signed=False),
-                                            'Transactions':count_column('Transactions'),
-                                            'Average Check':money_column('Average Check',decimals=2),
-                                            'Sales Change':percentage_column('Sales Change'),
-                                            'Transaction Change':percentage_column('Transaction Change')})
-            if field == 'daypart':
-                st.caption('Channel and daypart are different views of the same sales; do not add them together.')
+        # Put the breakdown chart above the full-width table so long column labels
+        # and comma-separated values stay legible on a typical laptop screen.
+        with st.container(key=f'lr_breakdown_{field}'):
+            st.subheader('Share of Net Sales',anchor=False)
+            fig=go.Figure(go.Pie(labels=[r['name'] for r in breakdown],
+                values=[r['net_sales_usd'] for r in breakdown],hole=.58,
+                marker=dict(colors=[BLUE,GREEN,CORAL,'#8190AC','#BCC5D7'][:len(breakdown)]),
+                textinfo='percent',textposition='inside',insidetextorientation='horizontal',
+                textfont=dict(size=13,color='#FFFFFF'),
+                hovertemplate='%{label}<br>Net sales: $%{value:,.0f}<extra></extra>'))
+            chart_style(fig,height=275)
+            fig.update_layout(
+                showlegend=False,
+                hoverlabel=dict(bgcolor='#FFFFFF', bordercolor='#DDE2F8',
+                                font=dict(color=NAVY, size=16, family='Arial, sans-serif'),
+                                align='left'),
+            )
+            chart_key([(r['name'],color) for r,color in zip(
+                breakdown,[BLUE,GREEN,CORAL,'#8190AC','#BCC5D7'])])
+            st.plotly_chart(fig,use_container_width=True,config={'displayModeBar':False})
+        rows=[]
+        for r in breakdown:
+            comparison=a.compare_sales(start,end,mode=mode,restaurant_ids=ids,**{field:r['name']})
+            rows.append({'Segment':r['name'],'Net Sales':r['net_sales_usd'],
+                'Sales Mix':pct_points(r['net_sales_usd']/current['net_sales_usd']),
+                'Transactions':r['transactions'],
+                'Average Check':r['average_check_usd'],
+                'Sales Change':pct_points(comparison['sales_growth_pct']) if mode!='none' else None,
+                'Transaction Change':pct_points(comparison['transaction_growth_pct']) if mode!='none' else None})
+        with st.container(key=f'lr_table_{field}'):
+            st.dataframe(pd.DataFrame(rows),hide_index=True,use_container_width=True,
+                         height=35*(len(rows)+1)+10,
+                         column_config={
+                             'Segment':st.column_config.TextColumn('Segment',width=110),
+                             'Net Sales':money_column('Net Sales',width=135),
+                             'Sales Mix':percentage_column('Sales Mix',signed=False,width=90),
+                             'Transactions':count_column('Transactions',width=125),
+                             'Average Check':money_column('Average Check',decimals=2,width=120),
+                             'Sales Change':percentage_column('Sales Change',width=120),
+                             'Transaction Change':percentage_column('Transaction Change',width=160),
+                         })
+        if field == 'daypart':
+            st.caption('Channel and daypart are different views of the same sales; do not add them together.')
 
 
 def menu_performance():
@@ -663,9 +707,9 @@ def menu_performance():
     col[2].metric('Complete Menu Store-Weeks',format_int(menu['eligible_store_weeks']))
     if not menu['items']:
         st.info('No menu records in this selection.');return
-    st.caption('Menu sales reconcile to POS sales for complete store-weeks.')
+    st.caption('For weeks with complete data, menu-item sales add up to the restaurant sales reported in Lunch Rush.')
     cats=category_summary(menu)
-    left,right=st.columns([1.1,1],gap='medium')
+    left,right=st.columns([1,1.18],gap='medium')
     with left:
         with st.container(key='lr_chart_menu_categories'):
             st.subheader('Sales by Menu Category',anchor=False)
@@ -682,12 +726,13 @@ def menu_performance():
             'Sales Mix':pct_points(r['mix_pct']),
             'Units':r['units_sold']} for r in cats]),
             hide_index=True,use_container_width=True,height=35*(len(cats)+1)+10,
-            column_config={'Net Sales':money_column('Net Sales'),
-                           'Sales Mix':percentage_column('Sales Mix',signed=False),
-                           'Units':count_column('Units')})
+            column_config={'Category':st.column_config.TextColumn('Category',width=100),
+                           'Net Sales':money_column('Net Sales',width=125),
+                           'Sales Mix':percentage_column('Sales Mix',signed=False,width=100),
+                           'Units':count_column('Units',width=110)})
     st.subheader('Menu-Item Performance',anchor=False)
     matched=matched_menu_growth(a,start,end,ids,mode)
-    if mode!='none':st.caption('Item growth uses the same eligible matched-store cohort in each period.')
+    if mode!='none':st.caption('Menu-item growth compares sales at the same established restaurants in both time periods.')
     rows=pd.DataFrame([{'Item':r['menu_item_name'],'Category':r['category'],
         'Net Sales':r['net_sales_usd'],'Units':r['units_sold'],
         'Sales Mix':pct_points(r['mix_pct']),
@@ -696,15 +741,17 @@ def menu_performance():
         'Comparable Item Growth':pct_points(matched.get(r['menu_item_id'])) if mode!='none' else None}
         for r in menu['items']])
     st.dataframe(rows,hide_index=True,use_container_width=True,height=485,
-                 column_config={'Net Sales':money_column('Net Sales'),
-                                'Units':count_column('Units'),
-                                'Sales Mix':percentage_column('Sales Mix',signed=False),
-                                'Realized Price':money_column('Realized Price',decimals=2),
-                                'Attach Rate':percentage_column('Attach Rate',signed=False),
-                                'Comparable Item Growth':percentage_column('Comparable Item Growth')})
+                 column_config={'Item':st.column_config.TextColumn('Item',width=195),
+                                'Category':st.column_config.TextColumn('Category',width=110),
+                                'Net Sales':money_column('Net Sales',width=135),
+                                'Units':count_column('Units',width=105),
+                                'Sales Mix':percentage_column('Sales Mix',signed=False,width=100),
+                                'Realized Price':money_column('Realized Price',decimals=2,width=125),
+                                'Attach Rate':percentage_column('Attach Rate',signed=False,width=105),
+                                'Comparable Item Growth':percentage_column('Comparable Item Growth',width=175)})
     st.download_button('Download Menu Table (CSV)',rows.to_csv(index=False).encode('utf-8'),
                        file_name='lunch_rush_menu.csv',mime='text/csv')
-    st.caption('Attach rate is orders containing an item divided by completed transactions, where order-level coverage is complete.')
+    st.caption('Attach rate is the percentage of orders that included an item. It appears only when complete order-level data is available.')
 
 
 def insights():
